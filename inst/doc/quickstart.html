@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+
+
+<title>Getting Started with bidser</title>
+
+<script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
+// be compatible with the behavior of Pandoc < 2.8).
+document.addEventListener('DOMContentLoaded', function(e) {
+  var hs = document.querySelectorAll("div.section[class*='level'] > :first-child");
+  var i, h, a;
+  for (i = 0; i < hs.length; i++) {
+    h = hs[i];
+    if (!/^h[1-6]$/i.test(h.tagName)) continue;  // it should be a header h1-h6
+    a = h.attributes;
+    while (a.length > 0) h.removeAttribute(a[0].name);
+  }
+});
+</script>
+
+<style type="text/css">
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+span.underline{text-decoration: underline;}
+div.column{display: inline-block; vertical-align: top; width: 50%;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+</style>
+
+
+
+<style type="text/css">
+code {
+white-space: pre;
+}
+.sourceCode {
+overflow: visible;
+}
+</style>
+<style type="text/css" data-origin="pandoc">
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+{ counter-reset: source-line 0; }
+pre.numberSource code > span
+{ position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+{ content: counter(source-line);
+position: relative; left: -1em; text-align: right; vertical-align: baseline;
+border: none; display: inline-block;
+-webkit-touch-callout: none; -webkit-user-select: none;
+-khtml-user-select: none; -moz-user-select: none;
+-ms-user-select: none; user-select: none;
+padding: 0 4px; width: 4em;
+color: #aaaaaa;
+}
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa; padding-left: 4px; }
+div.sourceCode
+{ }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } 
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.at { color: #7d9029; } 
+code span.bn { color: #40a070; } 
+code span.bu { color: #008000; } 
+code span.cf { color: #007020; font-weight: bold; } 
+code span.ch { color: #4070a0; } 
+code span.cn { color: #880000; } 
+code span.co { color: #60a0b0; font-style: italic; } 
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.do { color: #ba2121; font-style: italic; } 
+code span.dt { color: #902000; } 
+code span.dv { color: #40a070; } 
+code span.er { color: #ff0000; font-weight: bold; } 
+code span.ex { } 
+code span.fl { color: #40a070; } 
+code span.fu { color: #06287e; } 
+code span.im { color: #008000; font-weight: bold; } 
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.kw { color: #007020; font-weight: bold; } 
+code span.op { color: #666666; } 
+code span.ot { color: #007020; } 
+code span.pp { color: #bc7a00; } 
+code span.sc { color: #4070a0; } 
+code span.ss { color: #bb6688; } 
+code span.st { color: #4070a0; } 
+code span.va { color: #19177c; } 
+code span.vs { color: #4070a0; } 
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } 
+</style>
+<script>
+// apply pandoc div.sourceCode style to pre.sourceCode instead
+(function() {
+  var sheets = document.styleSheets;
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].ownerNode.dataset["origin"] !== "pandoc") continue;
+    try { var rules = sheets[i].cssRules; } catch (e) { continue; }
+    var j = 0;
+    while (j < rules.length) {
+      var rule = rules[j];
+      // check if there is a div.sourceCode rule
+      if (rule.type !== rule.STYLE_RULE || rule.selectorText !== "div.sourceCode") {
+        j++;
+        continue;
+      }
+      var style = rule.style.cssText;
+      // check if color or background-color is set
+      if (rule.style.color === '' && rule.style.backgroundColor === '') {
+        j++;
+        continue;
+      }
+      // replace div.sourceCode by a pre.sourceCode rule
+      sheets[i].deleteRule(j);
+      sheets[i].insertRule('pre.sourceCode{' + style + '}', j);
+    }
+  }
+})();
+</script>
+
+
+
+
+<style type="text/css">body {
+background-color: #fff;
+margin: 1em auto;
+max-width: 700px;
+overflow: visible;
+padding-left: 2em;
+padding-right: 2em;
+font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+font-size: 14px;
+line-height: 1.35;
+}
+#TOC {
+clear: both;
+margin: 0 0 10px 10px;
+padding: 4px;
+width: 400px;
+border: 1px solid #CCCCCC;
+border-radius: 5px;
+background-color: #f6f6f6;
+font-size: 13px;
+line-height: 1.3;
+}
+#TOC .toctitle {
+font-weight: bold;
+font-size: 15px;
+margin-left: 5px;
+}
+#TOC ul {
+padding-left: 40px;
+margin-left: -1.5em;
+margin-top: 5px;
+margin-bottom: 5px;
+}
+#TOC ul ul {
+margin-left: -2em;
+}
+#TOC li {
+line-height: 16px;
+}
+table {
+margin: 1em auto;
+border-width: 1px;
+border-color: #DDDDDD;
+border-style: outset;
+border-collapse: collapse;
+}
+table th {
+border-width: 2px;
+padding: 5px;
+border-style: inset;
+}
+table td {
+border-width: 1px;
+border-style: inset;
+line-height: 18px;
+padding: 5px 5px;
+}
+table, table th, table td {
+border-left-style: none;
+border-right-style: none;
+}
+table thead, table tr.even {
+background-color: #f7f7f7;
+}
+p {
+margin: 0.5em 0;
+}
+blockquote {
+background-color: #f6f6f6;
+padding: 0.25em 0.75em;
+}
+hr {
+border-style: solid;
+border: none;
+border-top: 1px solid #777;
+margin: 28px 0;
+}
+dl {
+margin-left: 0;
+}
+dl dd {
+margin-bottom: 13px;
+margin-left: 13px;
+}
+dl dt {
+font-weight: bold;
+}
+ul {
+margin-top: 0;
+}
+ul li {
+list-style: circle outside;
+}
+ul ul {
+margin-bottom: 0;
+}
+pre, code {
+background-color: #f7f7f7;
+border-radius: 3px;
+color: #333;
+white-space: pre-wrap; 
+}
+pre {
+border-radius: 3px;
+margin: 5px 0px 10px 0px;
+padding: 10px;
+}
+pre:not([class]) {
+background-color: #f7f7f7;
+}
+code {
+font-family: Consolas, Monaco, 'Courier New', monospace;
+font-size: 85%;
+}
+p > code, li > code {
+padding: 2px 0px;
+}
+div.figure {
+text-align: center;
+}
+img {
+background-color: #FFFFFF;
+padding: 2px;
+border: 1px solid #DDDDDD;
+border-radius: 3px;
+border: 1px solid #CCCCCC;
+margin: 0 5px;
+}
+h1 {
+margin-top: 0;
+font-size: 35px;
+line-height: 40px;
+}
+h2 {
+border-bottom: 4px solid #f7f7f7;
+padding-top: 10px;
+padding-bottom: 2px;
+font-size: 145%;
+}
+h3 {
+border-bottom: 2px solid #f7f7f7;
+padding-top: 10px;
+font-size: 120%;
+}
+h4 {
+border-bottom: 1px solid #f7f7f7;
+margin-left: 8px;
+font-size: 105%;
+}
+h5, h6 {
+border-bottom: 1px solid #ccc;
+font-size: 105%;
+}
+a {
+color: #0033dd;
+text-decoration: none;
+}
+a:hover {
+color: #6666ff; }
+a:visited {
+color: #800080; }
+a:visited:hover {
+color: #BB00BB; }
+a[href^="http:"] {
+text-decoration: underline; }
+a[href^="https:"] {
+text-decoration: underline; }
+
+code > span.kw { color: #555; font-weight: bold; } 
+code > span.dt { color: #902000; } 
+code > span.dv { color: #40a070; } 
+code > span.bn { color: #d14; } 
+code > span.fl { color: #d14; } 
+code > span.ch { color: #d14; } 
+code > span.st { color: #d14; } 
+code > span.co { color: #888888; font-style: italic; } 
+code > span.ot { color: #007020; } 
+code > span.al { color: #ff0000; font-weight: bold; } 
+code > span.fu { color: #900; font-weight: bold; } 
+code > span.er { color: #a61717; background-color: #e3d2d2; } 
+</style>
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Getting Started with bidser</h1>
+
+
+
+<div id="introduction-to-bidser" class="section level2">
+<h2>Introduction to bidser</h2>
+<p><code>bidser</code> is an R package designed for working with
+neuroimaging data organized according to the <a href="https://bids.neuroimaging.io/">Brain Imaging Data Structure
+(BIDS)</a> standard. BIDS is a specification that describes how to
+organize and name neuroimaging and behavioral data, making datasets more
+accessible, shareable, and easier to analyze.</p>
+<div id="what-is-bids" class="section level3">
+<h3>What is BIDS?</h3>
+<p>BIDS organizes data into a hierarchical folder structure with
+standardized naming conventions:</p>
+<ul>
+<li><strong>Subjects</strong> are identified by folders named
+<code>sub-XX</code></li>
+<li><strong>Sessions</strong> (optional) are identified by folders named
+<code>ses-XX</code></li>
+<li><strong>Data types</strong> are organized into modality-specific
+folders (<code>anat</code>, <code>func</code>, <code>dwi</code>,
+etc.)</li>
+<li><strong>Files</strong> follow specific naming patterns that encode
+metadata (subject, session, task, run, etc.)</li>
+</ul>
+</div>
+<div id="what-does-bidser-do" class="section level3">
+<h3>What does bidser do?</h3>
+<p><code>bidser</code> provides tools to:</p>
+<ul>
+<li><strong>Query and filter</strong> files based on BIDS metadata
+(subject, task, run, etc.)</li>
+<li><strong>Read event files</strong> that describe experimental
+paradigms</li>
+<li><strong>Work with fMRIPrep derivatives</strong> for preprocessed
+data</li>
+<li><strong>Navigate complex BIDS hierarchies</strong> without manually
+constructing file paths</li>
+</ul>
+<p>Let’s explore these capabilities using a real BIDS dataset.</p>
+</div>
+</div>
+<div id="loading-a-bids-dataset" class="section level2">
+<h2>Loading a BIDS Dataset</h2>
+<p>We’ll use the <code>ds001</code> dataset from the BIDS examples,
+which contains data from a “Balloon Analog Risk Task” experiment with 16
+subjects.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a>proj</span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a><span class="co">#&gt; BIDS Project Summary </span></span>
+<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a><span class="co">#&gt; Project Name:  bids_example_ds001 </span></span>
+<span id="cb1-4"><a href="#cb1-4" tabindex="-1"></a><span class="co">#&gt; Participants (n):  16 </span></span>
+<span id="cb1-5"><a href="#cb1-5" tabindex="-1"></a><span class="co">#&gt; Tasks:  balloonanalogrisktask </span></span>
+<span id="cb1-6"><a href="#cb1-6" tabindex="-1"></a><span class="co">#&gt; Image Types:  anat, func </span></span>
+<span id="cb1-7"><a href="#cb1-7" tabindex="-1"></a><span class="co">#&gt; Modalities:  (none) </span></span>
+<span id="cb1-8"><a href="#cb1-8" tabindex="-1"></a><span class="co">#&gt; Keys:  folder, kind, relative_path, subid, suffix, type, run, task</span></span></code></pre></div>
+<p>The <code>bids_project</code> object provides a high-level interface
+to the dataset. We can see it contains 16 subjects with both anatomical
+and functional data.</p>
+</div>
+<div id="basic-dataset-queries" class="section level2">
+<h2>Basic Dataset Queries</h2>
+<div id="dataset-structure" class="section level3">
+<h3>Dataset Structure</h3>
+<p>Let’s explore the basic structure of this dataset:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a><span class="co"># Check if the dataset has multiple sessions per subject</span></span>
+<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a><span class="fu">sessions</span>(proj)</span>
+<span id="cb2-3"><a href="#cb2-3" tabindex="-1"></a><span class="co">#&gt; NULL</span></span>
+<span id="cb2-4"><a href="#cb2-4" tabindex="-1"></a></span>
+<span id="cb2-5"><a href="#cb2-5" tabindex="-1"></a><span class="co"># Get all participant IDs</span></span>
+<span id="cb2-6"><a href="#cb2-6" tabindex="-1"></a><span class="fu">participants</span>(proj)</span>
+<span id="cb2-7"><a href="#cb2-7" tabindex="-1"></a><span class="co">#&gt;  [1] &quot;01&quot; &quot;02&quot; &quot;03&quot; &quot;04&quot; &quot;05&quot; &quot;06&quot; &quot;07&quot; &quot;08&quot; &quot;09&quot; &quot;10&quot; &quot;11&quot; &quot;12&quot; &quot;13&quot; &quot;14&quot; &quot;15&quot;</span></span>
+<span id="cb2-8"><a href="#cb2-8" tabindex="-1"></a><span class="co">#&gt; [16] &quot;16&quot;</span></span>
+<span id="cb2-9"><a href="#cb2-9" tabindex="-1"></a></span>
+<span id="cb2-10"><a href="#cb2-10" tabindex="-1"></a><span class="co"># What tasks are included?</span></span>
+<span id="cb2-11"><a href="#cb2-11" tabindex="-1"></a><span class="fu">tasks</span>(proj)</span>
+<span id="cb2-12"><a href="#cb2-12" tabindex="-1"></a><span class="co">#&gt; [1] &quot;balloonanalogrisktask&quot;</span></span>
+<span id="cb2-13"><a href="#cb2-13" tabindex="-1"></a></span>
+<span id="cb2-14"><a href="#cb2-14" tabindex="-1"></a><span class="co"># Get a summary of the dataset</span></span>
+<span id="cb2-15"><a href="#cb2-15" tabindex="-1"></a><span class="fu">bids_summary</span>(proj)</span>
+<span id="cb2-16"><a href="#cb2-16" tabindex="-1"></a><span class="co">#&gt; $n_subjects</span></span>
+<span id="cb2-17"><a href="#cb2-17" tabindex="-1"></a><span class="co">#&gt; [1] 16</span></span>
+<span id="cb2-18"><a href="#cb2-18" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb2-19"><a href="#cb2-19" tabindex="-1"></a><span class="co">#&gt; $n_sessions</span></span>
+<span id="cb2-20"><a href="#cb2-20" tabindex="-1"></a><span class="co">#&gt; NULL</span></span>
+<span id="cb2-21"><a href="#cb2-21" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb2-22"><a href="#cb2-22" tabindex="-1"></a><span class="co">#&gt; $tasks</span></span>
+<span id="cb2-23"><a href="#cb2-23" tabindex="-1"></a><span class="co">#&gt; # A tibble: 1 × 2</span></span>
+<span id="cb2-24"><a href="#cb2-24" tabindex="-1"></a><span class="co">#&gt;   task                  n_runs</span></span>
+<span id="cb2-25"><a href="#cb2-25" tabindex="-1"></a><span class="co">#&gt;   &lt;chr&gt;                  &lt;int&gt;</span></span>
+<span id="cb2-26"><a href="#cb2-26" tabindex="-1"></a><span class="co">#&gt; 1 balloonanalogrisktask      3</span></span>
+<span id="cb2-27"><a href="#cb2-27" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb2-28"><a href="#cb2-28" tabindex="-1"></a><span class="co">#&gt; $total_runs</span></span>
+<span id="cb2-29"><a href="#cb2-29" tabindex="-1"></a><span class="co">#&gt; [1] 3</span></span></code></pre></div>
+</div>
+<div id="finding-files-by-type" class="section level3">
+<h3>Finding Files by Type</h3>
+<p>bidser provides several ways to find files. Let’s start with the most
+common neuroimaging file types:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a><span class="co"># Find all anatomical T1-weighted images</span></span>
+<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a>t1w_files <span class="ot">&lt;-</span> <span class="fu">search_files</span>(proj, <span class="at">regex =</span> <span class="st">&quot;T1w</span><span class="sc">\\</span><span class="st">.nii&quot;</span>, <span class="at">full_path =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a><span class="fu">head</span>(t1w_files)</span>
+<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a><span class="co">#&gt; [1] &quot;sub-01/anat/sub-01_T1w.nii.gz&quot; &quot;sub-02/anat/sub-02_T1w.nii.gz&quot;</span></span>
+<span id="cb3-5"><a href="#cb3-5" tabindex="-1"></a><span class="co">#&gt; [3] &quot;sub-03/anat/sub-03_T1w.nii.gz&quot; &quot;sub-04/anat/sub-04_T1w.nii.gz&quot;</span></span>
+<span id="cb3-6"><a href="#cb3-6" tabindex="-1"></a><span class="co">#&gt; [5] &quot;sub-05/anat/sub-05_T1w.nii.gz&quot; &quot;sub-06/anat/sub-06_T1w.nii.gz&quot;</span></span>
+<span id="cb3-7"><a href="#cb3-7" tabindex="-1"></a></span>
+<span id="cb3-8"><a href="#cb3-8" tabindex="-1"></a><span class="co"># Find all functional BOLD scans</span></span>
+<span id="cb3-9"><a href="#cb3-9" tabindex="-1"></a>bold_files <span class="ot">&lt;-</span> <span class="fu">func_scans</span>(proj, <span class="at">full_path =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb3-10"><a href="#cb3-10" tabindex="-1"></a><span class="fu">head</span>(bold_files)</span>
+<span id="cb3-11"><a href="#cb3-11" tabindex="-1"></a><span class="co">#&gt; [1] &quot;sub-01/func/sub-01_task-balloonanalogrisktask_run-01_bold.nii.gz&quot;</span></span>
+<span id="cb3-12"><a href="#cb3-12" tabindex="-1"></a><span class="co">#&gt; [2] &quot;sub-01/func/sub-01_task-balloonanalogrisktask_run-02_bold.nii.gz&quot;</span></span>
+<span id="cb3-13"><a href="#cb3-13" tabindex="-1"></a><span class="co">#&gt; [3] &quot;sub-01/func/sub-01_task-balloonanalogrisktask_run-03_bold.nii.gz&quot;</span></span>
+<span id="cb3-14"><a href="#cb3-14" tabindex="-1"></a><span class="co">#&gt; [4] &quot;sub-02/func/sub-02_task-balloonanalogrisktask_run-01_bold.nii.gz&quot;</span></span>
+<span id="cb3-15"><a href="#cb3-15" tabindex="-1"></a><span class="co">#&gt; [5] &quot;sub-02/func/sub-02_task-balloonanalogrisktask_run-02_bold.nii.gz&quot;</span></span>
+<span id="cb3-16"><a href="#cb3-16" tabindex="-1"></a><span class="co">#&gt; [6] &quot;sub-02/func/sub-02_task-balloonanalogrisktask_run-03_bold.nii.gz&quot;</span></span></code></pre></div>
+</div>
+<div id="filtering-by-subject-and-task" class="section level3">
+<h3>Filtering by Subject and Task</h3>
+<p>One of bidser’s key strengths is filtering data by BIDS metadata:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="co"># Get functional scans for specific subjects</span></span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a>sub01_scans <span class="ot">&lt;-</span> <span class="fu">func_scans</span>(proj, <span class="at">subid =</span> <span class="st">&quot;01&quot;</span>)</span>
+<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a>sub02_scans <span class="ot">&lt;-</span> <span class="fu">func_scans</span>(proj, <span class="at">subid =</span> <span class="st">&quot;02&quot;</span>)</span>
+<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a></span>
+<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Subject 01:&quot;</span>, <span class="fu">length</span>(sub01_scans), <span class="st">&quot;scans</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a><span class="co">#&gt; Subject 01: 3 scans</span></span>
+<span id="cb4-7"><a href="#cb4-7" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Subject 02:&quot;</span>, <span class="fu">length</span>(sub02_scans), <span class="st">&quot;scans</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb4-8"><a href="#cb4-8" tabindex="-1"></a><span class="co">#&gt; Subject 02: 3 scans</span></span>
+<span id="cb4-9"><a href="#cb4-9" tabindex="-1"></a></span>
+<span id="cb4-10"><a href="#cb4-10" tabindex="-1"></a><span class="co"># Filter by task (ds001 only has one task, but this shows the syntax)</span></span>
+<span id="cb4-11"><a href="#cb4-11" tabindex="-1"></a>task_scans <span class="ot">&lt;-</span> <span class="fu">func_scans</span>(proj, <span class="at">task =</span> <span class="st">&quot;balloonanalogrisktask&quot;</span>)</span>
+<span id="cb4-12"><a href="#cb4-12" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Balloon task:&quot;</span>, <span class="fu">length</span>(task_scans), <span class="st">&quot;scans total</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb4-13"><a href="#cb4-13" tabindex="-1"></a><span class="co">#&gt; Balloon task: 48 scans total</span></span>
+<span id="cb4-14"><a href="#cb4-14" tabindex="-1"></a></span>
+<span id="cb4-15"><a href="#cb4-15" tabindex="-1"></a><span class="co"># Combine filters: specific subject AND task</span></span>
+<span id="cb4-16"><a href="#cb4-16" tabindex="-1"></a>sub01_task_scans <span class="ot">&lt;-</span> <span class="fu">func_scans</span>(proj, <span class="at">subid =</span> <span class="st">&quot;01&quot;</span>, <span class="at">task =</span> <span class="st">&quot;balloonanalogrisktask&quot;</span>)</span>
+<span id="cb4-17"><a href="#cb4-17" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Subject 01, balloon task:&quot;</span>, <span class="fu">length</span>(sub01_task_scans), <span class="st">&quot;scans</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb4-18"><a href="#cb4-18" tabindex="-1"></a><span class="co">#&gt; Subject 01, balloon task: 3 scans</span></span></code></pre></div>
+</div>
+<div id="working-with-multiple-subjects" class="section level3">
+<h3>Working with Multiple Subjects</h3>
+<p>You can use regular expressions to select multiple subjects at
+once:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a><span class="co"># Get scans for subjects 01, 02, and 03</span></span>
+<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a>first_three_scans <span class="ot">&lt;-</span> <span class="fu">func_scans</span>(proj, <span class="at">subid =</span> <span class="st">&quot;0[123]&quot;</span>)</span>
+<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;First 3 subjects:&quot;</span>, <span class="fu">length</span>(first_three_scans), <span class="st">&quot;scans total</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb5-4"><a href="#cb5-4" tabindex="-1"></a><span class="co">#&gt; First 3 subjects: 9 scans total</span></span>
+<span id="cb5-5"><a href="#cb5-5" tabindex="-1"></a></span>
+<span id="cb5-6"><a href="#cb5-6" tabindex="-1"></a><span class="co"># Get scans for all subjects (equivalent to default)</span></span>
+<span id="cb5-7"><a href="#cb5-7" tabindex="-1"></a>all_scans <span class="ot">&lt;-</span> <span class="fu">func_scans</span>(proj, <span class="at">subid =</span> <span class="st">&quot;.*&quot;</span>)</span>
+<span id="cb5-8"><a href="#cb5-8" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;All subjects:&quot;</span>, <span class="fu">length</span>(all_scans), <span class="st">&quot;scans total</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb5-9"><a href="#cb5-9" tabindex="-1"></a><span class="co">#&gt; All subjects: 48 scans total</span></span></code></pre></div>
+</div>
+</div>
+<div id="working-with-event-files" class="section level2">
+<h2>Working with Event Files</h2>
+<p>Event files describe the experimental paradigm - when stimuli were
+presented, what responses occurred, etc. This is crucial for task-based
+fMRI analysis.</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a><span class="co"># Find all event files</span></span>
+<span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a>event_file_paths <span class="ot">&lt;-</span> <span class="fu">event_files</span>(proj)</span>
+<span id="cb6-3"><a href="#cb6-3" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Found&quot;</span>, <span class="fu">length</span>(event_file_paths), <span class="st">&quot;event files</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb6-4"><a href="#cb6-4" tabindex="-1"></a><span class="co">#&gt; Found 48 event files</span></span>
+<span id="cb6-5"><a href="#cb6-5" tabindex="-1"></a></span>
+<span id="cb6-6"><a href="#cb6-6" tabindex="-1"></a><span class="co"># Read event data into a nested data frame</span></span>
+<span id="cb6-7"><a href="#cb6-7" tabindex="-1"></a>events_data <span class="ot">&lt;-</span> <span class="fu">read_events</span>(proj)</span>
+<span id="cb6-8"><a href="#cb6-8" tabindex="-1"></a>events_data</span>
+<span id="cb6-9"><a href="#cb6-9" tabindex="-1"></a><span class="co">#&gt; # A tibble: 48 × 5</span></span>
+<span id="cb6-10"><a href="#cb6-10" tabindex="-1"></a><span class="co">#&gt; # Groups:   .task, .session, .run, .subid [48]</span></span>
+<span id="cb6-11"><a href="#cb6-11" tabindex="-1"></a><span class="co">#&gt;    .subid .session .run  .task                 data              </span></span>
+<span id="cb6-12"><a href="#cb6-12" tabindex="-1"></a><span class="co">#&gt;    &lt;chr&gt;  &lt;chr&gt;    &lt;chr&gt; &lt;chr&gt;                 &lt;list&gt;            </span></span>
+<span id="cb6-13"><a href="#cb6-13" tabindex="-1"></a><span class="co">#&gt;  1 01     &lt;NA&gt;     01    balloonanalogrisktask &lt;tibble [158 × 2]&gt;</span></span>
+<span id="cb6-14"><a href="#cb6-14" tabindex="-1"></a><span class="co">#&gt;  2 01     &lt;NA&gt;     02    balloonanalogrisktask &lt;tibble [156 × 2]&gt;</span></span>
+<span id="cb6-15"><a href="#cb6-15" tabindex="-1"></a><span class="co">#&gt;  3 01     &lt;NA&gt;     03    balloonanalogrisktask &lt;tibble [149 × 2]&gt;</span></span>
+<span id="cb6-16"><a href="#cb6-16" tabindex="-1"></a><span class="co">#&gt;  4 02     &lt;NA&gt;     01    balloonanalogrisktask &lt;tibble [185 × 2]&gt;</span></span>
+<span id="cb6-17"><a href="#cb6-17" tabindex="-1"></a><span class="co">#&gt;  5 02     &lt;NA&gt;     02    balloonanalogrisktask &lt;tibble [184 × 2]&gt;</span></span>
+<span id="cb6-18"><a href="#cb6-18" tabindex="-1"></a><span class="co">#&gt;  6 02     &lt;NA&gt;     03    balloonanalogrisktask &lt;tibble [186 × 2]&gt;</span></span>
+<span id="cb6-19"><a href="#cb6-19" tabindex="-1"></a><span class="co">#&gt;  7 03     &lt;NA&gt;     01    balloonanalogrisktask &lt;tibble [150 × 2]&gt;</span></span>
+<span id="cb6-20"><a href="#cb6-20" tabindex="-1"></a><span class="co">#&gt;  8 03     &lt;NA&gt;     02    balloonanalogrisktask &lt;tibble [169 × 2]&gt;</span></span>
+<span id="cb6-21"><a href="#cb6-21" tabindex="-1"></a><span class="co">#&gt;  9 03     &lt;NA&gt;     03    balloonanalogrisktask &lt;tibble [175 × 2]&gt;</span></span>
+<span id="cb6-22"><a href="#cb6-22" tabindex="-1"></a><span class="co">#&gt; 10 04     &lt;NA&gt;     01    balloonanalogrisktask &lt;tibble [166 × 2]&gt;</span></span>
+<span id="cb6-23"><a href="#cb6-23" tabindex="-1"></a><span class="co">#&gt; # ℹ 38 more rows</span></span></code></pre></div>
+<p>Let’s explore the event data structure:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a><span class="co"># Unnest events for subject 01</span></span>
+<span id="cb7-2"><a href="#cb7-2" tabindex="-1"></a>first_subject_events <span class="ot">&lt;-</span> events_data <span class="sc">%&gt;%</span></span>
+<span id="cb7-3"><a href="#cb7-3" tabindex="-1"></a>  <span class="fu">filter</span>(.subid <span class="sc">==</span> <span class="st">&quot;01&quot;</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb7-4"><a href="#cb7-4" tabindex="-1"></a>  <span class="fu">unnest</span>(<span class="at">cols =</span> <span class="fu">c</span>(data))</span>
+<span id="cb7-5"><a href="#cb7-5" tabindex="-1"></a></span>
+<span id="cb7-6"><a href="#cb7-6" tabindex="-1"></a><span class="fu">head</span>(first_subject_events)</span>
+<span id="cb7-7"><a href="#cb7-7" tabindex="-1"></a><span class="co">#&gt; # A tibble: 6 × 6</span></span>
+<span id="cb7-8"><a href="#cb7-8" tabindex="-1"></a><span class="co">#&gt; # Groups:   .task, .session, .run, .subid [1]</span></span>
+<span id="cb7-9"><a href="#cb7-9" tabindex="-1"></a><span class="co">#&gt;   .subid .session .run  .task                 onset\tduration\ttrial_typ…¹ .file</span></span>
+<span id="cb7-10"><a href="#cb7-10" tabindex="-1"></a><span class="co">#&gt;   &lt;chr&gt;  &lt;chr&gt;    &lt;chr&gt; &lt;chr&gt;                 &lt;chr&gt;                        &lt;chr&gt;</span></span>
+<span id="cb7-11"><a href="#cb7-11" tabindex="-1"></a><span class="co">#&gt; 1 01     &lt;NA&gt;     01    balloonanalogrisktask &quot;0.061\t0.772\tpumps_demean… /pri…</span></span>
+<span id="cb7-12"><a href="#cb7-12" tabindex="-1"></a><span class="co">#&gt; 2 01     &lt;NA&gt;     01    balloonanalogrisktask &quot;4.958\t0.772\tpumps_demean… /pri…</span></span>
+<span id="cb7-13"><a href="#cb7-13" tabindex="-1"></a><span class="co">#&gt; 3 01     &lt;NA&gt;     01    balloonanalogrisktask &quot;7.179\t0.772\tpumps_demean… /pri…</span></span>
+<span id="cb7-14"><a href="#cb7-14" tabindex="-1"></a><span class="co">#&gt; 4 01     &lt;NA&gt;     01    balloonanalogrisktask &quot;10.416\t0.772\tpumps_demea… /pri…</span></span>
+<span id="cb7-15"><a href="#cb7-15" tabindex="-1"></a><span class="co">#&gt; 5 01     &lt;NA&gt;     01    balloonanalogrisktask &quot;13.419\t0.772\tpumps_demea… /pri…</span></span>
+<span id="cb7-16"><a href="#cb7-16" tabindex="-1"></a><span class="co">#&gt; 6 01     &lt;NA&gt;     01    balloonanalogrisktask &quot;16.754\t0.772\texplode_dem… /pri…</span></span>
+<span id="cb7-17"><a href="#cb7-17" tabindex="-1"></a><span class="co">#&gt; # ℹ abbreviated name:</span></span>
+<span id="cb7-18"><a href="#cb7-18" tabindex="-1"></a><span class="co">#&gt; #   ¹​`onset\tduration\ttrial_type\tcash_demean\tcontrol_pumps_demean\texplode_demean\tpumps_demean\tresponse_time`</span></span>
+<span id="cb7-19"><a href="#cb7-19" tabindex="-1"></a><span class="fu">names</span>(first_subject_events)</span>
+<span id="cb7-20"><a href="#cb7-20" tabindex="-1"></a><span class="co">#&gt; [1] &quot;.subid&quot;                                                                                                     </span></span>
+<span id="cb7-21"><a href="#cb7-21" tabindex="-1"></a><span class="co">#&gt; [2] &quot;.session&quot;                                                                                                   </span></span>
+<span id="cb7-22"><a href="#cb7-22" tabindex="-1"></a><span class="co">#&gt; [3] &quot;.run&quot;                                                                                                       </span></span>
+<span id="cb7-23"><a href="#cb7-23" tabindex="-1"></a><span class="co">#&gt; [4] &quot;.task&quot;                                                                                                      </span></span>
+<span id="cb7-24"><a href="#cb7-24" tabindex="-1"></a><span class="co">#&gt; [5] &quot;onset\tduration\ttrial_type\tcash_demean\tcontrol_pumps_demean\texplode_demean\tpumps_demean\tresponse_time&quot;</span></span>
+<span id="cb7-25"><a href="#cb7-25" tabindex="-1"></a><span class="co">#&gt; [6] &quot;.file&quot;</span></span></code></pre></div>
+<div id="analyzing-event-data" class="section level3">
+<h3>Analyzing Event Data</h3>
+<p>Let’s do some basic exploration of the experimental design:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" tabindex="-1"></a><span class="co"># How many trials per subject?</span></span>
+<span id="cb8-2"><a href="#cb8-2" tabindex="-1"></a>trial_counts <span class="ot">&lt;-</span> events_data <span class="sc">%&gt;%</span></span>
+<span id="cb8-3"><a href="#cb8-3" tabindex="-1"></a>  <span class="fu">unnest</span>(<span class="at">cols =</span> <span class="fu">c</span>(data)) <span class="sc">%&gt;%</span></span>
+<span id="cb8-4"><a href="#cb8-4" tabindex="-1"></a>  <span class="fu">group_by</span>(.subid) <span class="sc">%&gt;%</span></span>
+<span id="cb8-5"><a href="#cb8-5" tabindex="-1"></a>  <span class="fu">summarise</span>(<span class="at">n_trials =</span> <span class="fu">n</span>(), <span class="at">.groups =</span> <span class="st">&quot;drop&quot;</span>)</span>
+<span id="cb8-6"><a href="#cb8-6" tabindex="-1"></a></span>
+<span id="cb8-7"><a href="#cb8-7" tabindex="-1"></a>trial_counts</span>
+<span id="cb8-8"><a href="#cb8-8" tabindex="-1"></a><span class="co">#&gt; # A tibble: 16 × 2</span></span>
+<span id="cb8-9"><a href="#cb8-9" tabindex="-1"></a><span class="co">#&gt;    .subid n_trials</span></span>
+<span id="cb8-10"><a href="#cb8-10" tabindex="-1"></a><span class="co">#&gt;    &lt;chr&gt;     &lt;int&gt;</span></span>
+<span id="cb8-11"><a href="#cb8-11" tabindex="-1"></a><span class="co">#&gt;  1 01          463</span></span>
+<span id="cb8-12"><a href="#cb8-12" tabindex="-1"></a><span class="co">#&gt;  2 02          555</span></span>
+<span id="cb8-13"><a href="#cb8-13" tabindex="-1"></a><span class="co">#&gt;  3 03          494</span></span>
+<span id="cb8-14"><a href="#cb8-14" tabindex="-1"></a><span class="co">#&gt;  4 04          510</span></span>
+<span id="cb8-15"><a href="#cb8-15" tabindex="-1"></a><span class="co">#&gt;  5 05          419</span></span>
+<span id="cb8-16"><a href="#cb8-16" tabindex="-1"></a><span class="co">#&gt;  6 06          536</span></span>
+<span id="cb8-17"><a href="#cb8-17" tabindex="-1"></a><span class="co">#&gt;  7 07          492</span></span>
+<span id="cb8-18"><a href="#cb8-18" tabindex="-1"></a><span class="co">#&gt;  8 08          494</span></span>
+<span id="cb8-19"><a href="#cb8-19" tabindex="-1"></a><span class="co">#&gt;  9 09          497</span></span>
+<span id="cb8-20"><a href="#cb8-20" tabindex="-1"></a><span class="co">#&gt; 10 10          521</span></span>
+<span id="cb8-21"><a href="#cb8-21" tabindex="-1"></a><span class="co">#&gt; 11 11          471</span></span>
+<span id="cb8-22"><a href="#cb8-22" tabindex="-1"></a><span class="co">#&gt; 12 12          453</span></span>
+<span id="cb8-23"><a href="#cb8-23" tabindex="-1"></a><span class="co">#&gt; 13 13          485</span></span>
+<span id="cb8-24"><a href="#cb8-24" tabindex="-1"></a><span class="co">#&gt; 14 14          503</span></span>
+<span id="cb8-25"><a href="#cb8-25" tabindex="-1"></a><span class="co">#&gt; 15 15          411</span></span>
+<span id="cb8-26"><a href="#cb8-26" tabindex="-1"></a><span class="co">#&gt; 16 16          419</span></span></code></pre></div>
+</div>
+</div>
+<div id="working-with-individual-subjects" class="section level2">
+<h2>Working with Individual Subjects</h2>
+<p>The <code>bids_subject()</code> function provides a convenient
+interface for working with data from a single subject. It returns a
+lightweight object with helper functions that automatically filter data
+for that subject.</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" tabindex="-1"></a><span class="co"># Create a subject-specific interface for subject 01</span></span>
+<span id="cb9-2"><a href="#cb9-2" tabindex="-1"></a>subject_01 <span class="ot">&lt;-</span> <span class="fu">bids_subject</span>(proj, <span class="st">&quot;01&quot;</span>)</span>
+<span id="cb9-3"><a href="#cb9-3" tabindex="-1"></a></span>
+<span id="cb9-4"><a href="#cb9-4" tabindex="-1"></a><span class="co"># Get all functional scans for this subject</span></span>
+<span id="cb9-5"><a href="#cb9-5" tabindex="-1"></a>sub01_scans <span class="ot">&lt;-</span> subject_01<span class="sc">$</span><span class="fu">scans</span>()</span>
+<span id="cb9-6"><a href="#cb9-6" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Subject 01:&quot;</span>, <span class="fu">length</span>(sub01_scans), <span class="st">&quot;functional scans</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb9-7"><a href="#cb9-7" tabindex="-1"></a><span class="co">#&gt; Subject 01: 3 functional scans</span></span>
+<span id="cb9-8"><a href="#cb9-8" tabindex="-1"></a></span>
+<span id="cb9-9"><a href="#cb9-9" tabindex="-1"></a><span class="co"># Get event files for this subject</span></span>
+<span id="cb9-10"><a href="#cb9-10" tabindex="-1"></a>sub01_events <span class="ot">&lt;-</span> subject_01<span class="sc">$</span><span class="fu">events</span>()</span>
+<span id="cb9-11"><a href="#cb9-11" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Subject 01:&quot;</span>, <span class="fu">length</span>(sub01_events), <span class="st">&quot;event files</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb9-12"><a href="#cb9-12" tabindex="-1"></a><span class="co">#&gt; Subject 01: 5 event files</span></span>
+<span id="cb9-13"><a href="#cb9-13" tabindex="-1"></a></span>
+<span id="cb9-14"><a href="#cb9-14" tabindex="-1"></a><span class="co"># Read event data for this subject</span></span>
+<span id="cb9-15"><a href="#cb9-15" tabindex="-1"></a>sub01_event_data <span class="ot">&lt;-</span> subject_01<span class="sc">$</span><span class="fu">events</span>()</span>
+<span id="cb9-16"><a href="#cb9-16" tabindex="-1"></a>sub01_event_data</span>
+<span id="cb9-17"><a href="#cb9-17" tabindex="-1"></a><span class="co">#&gt; # A tibble: 3 × 5</span></span>
+<span id="cb9-18"><a href="#cb9-18" tabindex="-1"></a><span class="co">#&gt; # Groups:   .task, .session, .run, .subid [3]</span></span>
+<span id="cb9-19"><a href="#cb9-19" tabindex="-1"></a><span class="co">#&gt;   .subid .session .run  .task                 data              </span></span>
+<span id="cb9-20"><a href="#cb9-20" tabindex="-1"></a><span class="co">#&gt;   &lt;chr&gt;  &lt;chr&gt;    &lt;chr&gt; &lt;chr&gt;                 &lt;list&gt;            </span></span>
+<span id="cb9-21"><a href="#cb9-21" tabindex="-1"></a><span class="co">#&gt; 1 01     &lt;NA&gt;     01    balloonanalogrisktask &lt;tibble [158 × 2]&gt;</span></span>
+<span id="cb9-22"><a href="#cb9-22" tabindex="-1"></a><span class="co">#&gt; 2 01     &lt;NA&gt;     02    balloonanalogrisktask &lt;tibble [156 × 2]&gt;</span></span>
+<span id="cb9-23"><a href="#cb9-23" tabindex="-1"></a><span class="co">#&gt; 3 01     &lt;NA&gt;     03    balloonanalogrisktask &lt;tibble [149 × 2]&gt;</span></span></code></pre></div>
+<p>This approach is particularly useful when you’re doing subject-level
+analyses:</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" tabindex="-1"></a>subjects_to_analyze <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">&quot;01&quot;</span>, <span class="st">&quot;02&quot;</span>, <span class="st">&quot;03&quot;</span>)</span>
+<span id="cb10-2"><a href="#cb10-2" tabindex="-1"></a></span>
+<span id="cb10-3"><a href="#cb10-3" tabindex="-1"></a><span class="cf">for</span> (subj_id <span class="cf">in</span> subjects_to_analyze) {</span>
+<span id="cb10-4"><a href="#cb10-4" tabindex="-1"></a>  subj <span class="ot">&lt;-</span> <span class="fu">bids_subject</span>(proj, subj_id)</span>
+<span id="cb10-5"><a href="#cb10-5" tabindex="-1"></a>  scans <span class="ot">&lt;-</span> subj<span class="sc">$</span><span class="fu">scans</span>()</span>
+<span id="cb10-6"><a href="#cb10-6" tabindex="-1"></a>  events <span class="ot">&lt;-</span> subj<span class="sc">$</span><span class="fu">events</span>()</span>
+<span id="cb10-7"><a href="#cb10-7" tabindex="-1"></a>  <span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">&quot;Subject %s: %d scans, %d event files</span><span class="sc">\n</span><span class="st">&quot;</span>,</span>
+<span id="cb10-8"><a href="#cb10-8" tabindex="-1"></a>              subj_id, <span class="fu">length</span>(scans), <span class="fu">length</span>(events)))</span>
+<span id="cb10-9"><a href="#cb10-9" tabindex="-1"></a>}</span>
+<span id="cb10-10"><a href="#cb10-10" tabindex="-1"></a><span class="co">#&gt; Subject 01: 3 scans, 5 event files</span></span>
+<span id="cb10-11"><a href="#cb10-11" tabindex="-1"></a><span class="co">#&gt; Subject 02: 3 scans, 5 event files</span></span>
+<span id="cb10-12"><a href="#cb10-12" tabindex="-1"></a><span class="co">#&gt; Subject 03: 3 scans, 5 event files</span></span></code></pre></div>
+<p>The subject interface makes it easy to write analysis pipelines that
+iterate over subjects without manually constructing filters:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a>subject_trial_summary <span class="ot">&lt;-</span> <span class="fu">lapply</span>(<span class="fu">participants</span>(proj)[<span class="dv">1</span><span class="sc">:</span><span class="dv">3</span>], <span class="cf">function</span>(subj_id) {</span>
+<span id="cb11-2"><a href="#cb11-2" tabindex="-1"></a>  subj <span class="ot">&lt;-</span> <span class="fu">bids_subject</span>(proj, subj_id)</span>
+<span id="cb11-3"><a href="#cb11-3" tabindex="-1"></a>  event_data <span class="ot">&lt;-</span> subj<span class="sc">$</span><span class="fu">events</span>()</span>
+<span id="cb11-4"><a href="#cb11-4" tabindex="-1"></a>  n_trials <span class="ot">&lt;-</span> <span class="cf">if</span> (<span class="fu">nrow</span>(event_data) <span class="sc">&gt;</span> <span class="dv">0</span>) {</span>
+<span id="cb11-5"><a href="#cb11-5" tabindex="-1"></a>    event_data <span class="sc">%&gt;%</span> <span class="fu">unnest</span>(<span class="at">cols =</span> <span class="fu">c</span>(data)) <span class="sc">%&gt;%</span> <span class="fu">nrow</span>()</span>
+<span id="cb11-6"><a href="#cb11-6" tabindex="-1"></a>  } <span class="cf">else</span> {</span>
+<span id="cb11-7"><a href="#cb11-7" tabindex="-1"></a>    <span class="dv">0</span></span>
+<span id="cb11-8"><a href="#cb11-8" tabindex="-1"></a>  }</span>
+<span id="cb11-9"><a href="#cb11-9" tabindex="-1"></a>  <span class="fu">tibble</span>(<span class="at">subject =</span> subj_id, <span class="at">n_trials =</span> n_trials, <span class="at">n_scans =</span> <span class="fu">length</span>(subj<span class="sc">$</span><span class="fu">scans</span>()))</span>
+<span id="cb11-10"><a href="#cb11-10" tabindex="-1"></a>}) <span class="sc">%&gt;%</span> <span class="fu">bind_rows</span>()</span>
+<span id="cb11-11"><a href="#cb11-11" tabindex="-1"></a></span>
+<span id="cb11-12"><a href="#cb11-12" tabindex="-1"></a>subject_trial_summary</span>
+<span id="cb11-13"><a href="#cb11-13" tabindex="-1"></a><span class="co">#&gt; # A tibble: 3 × 3</span></span>
+<span id="cb11-14"><a href="#cb11-14" tabindex="-1"></a><span class="co">#&gt;   subject n_trials n_scans</span></span>
+<span id="cb11-15"><a href="#cb11-15" tabindex="-1"></a><span class="co">#&gt;   &lt;chr&gt;      &lt;int&gt;   &lt;int&gt;</span></span>
+<span id="cb11-16"><a href="#cb11-16" tabindex="-1"></a><span class="co">#&gt; 1 01           463       3</span></span>
+<span id="cb11-17"><a href="#cb11-17" tabindex="-1"></a><span class="co">#&gt; 2 02           555       3</span></span>
+<span id="cb11-18"><a href="#cb11-18" tabindex="-1"></a><span class="co">#&gt; 3 03           494       3</span></span></code></pre></div>
+</div>
+<div id="advanced-querying" class="section level2">
+<h2>Advanced Querying</h2>
+<div id="custom-file-searches" class="section level3">
+<h3>Custom File Searches</h3>
+<p>The <code>search_files()</code> function is very flexible for custom
+queries:</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" tabindex="-1"></a><span class="co"># Find all JSON sidecar files</span></span>
+<span id="cb12-2"><a href="#cb12-2" tabindex="-1"></a>json_files <span class="ot">&lt;-</span> <span class="fu">search_files</span>(proj, <span class="at">regex =</span> <span class="st">&quot;</span><span class="sc">\\</span><span class="st">.json$&quot;</span>)</span>
+<span id="cb12-3"><a href="#cb12-3" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Found&quot;</span>, <span class="fu">length</span>(json_files), <span class="st">&quot;JSON files</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb12-4"><a href="#cb12-4" tabindex="-1"></a><span class="co">#&gt; Found 0 JSON files</span></span>
+<span id="cb12-5"><a href="#cb12-5" tabindex="-1"></a></span>
+<span id="cb12-6"><a href="#cb12-6" tabindex="-1"></a><span class="co"># Find files for specific runs</span></span>
+<span id="cb12-7"><a href="#cb12-7" tabindex="-1"></a>run1_files <span class="ot">&lt;-</span> <span class="fu">search_files</span>(proj, <span class="at">regex =</span> <span class="st">&quot;bold&quot;</span>, <span class="at">run =</span> <span class="st">&quot;01&quot;</span>)</span>
+<span id="cb12-8"><a href="#cb12-8" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Found&quot;</span>, <span class="fu">length</span>(run1_files), <span class="st">&quot;files from run 01</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb12-9"><a href="#cb12-9" tabindex="-1"></a><span class="co">#&gt; Found 16 files from run 01</span></span>
+<span id="cb12-10"><a href="#cb12-10" tabindex="-1"></a></span>
+<span id="cb12-11"><a href="#cb12-11" tabindex="-1"></a><span class="co"># Complex pattern matching: T1w files for subjects 01-05</span></span>
+<span id="cb12-12"><a href="#cb12-12" tabindex="-1"></a>t1w_subset <span class="ot">&lt;-</span> <span class="fu">search_files</span>(proj, <span class="at">regex =</span> <span class="st">&quot;T1w&quot;</span>, <span class="at">subid =</span> <span class="st">&quot;0[1-5]&quot;</span>)</span>
+<span id="cb12-13"><a href="#cb12-13" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Found&quot;</span>, <span class="fu">length</span>(t1w_subset), <span class="st">&quot;T1w files for subjects 01-05</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb12-14"><a href="#cb12-14" tabindex="-1"></a><span class="co">#&gt; Found 5 T1w files for subjects 01-05</span></span></code></pre></div>
+</div>
+<div id="getting-full-file-paths" class="section level3">
+<h3>Getting Full File Paths</h3>
+<p>Sometimes you need the complete file paths for analysis:</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" tabindex="-1"></a><span class="co"># Get full paths to functional scans for analysis</span></span>
+<span id="cb13-2"><a href="#cb13-2" tabindex="-1"></a>full_paths <span class="ot">&lt;-</span> <span class="fu">func_scans</span>(proj, <span class="at">subid =</span> <span class="st">&quot;01&quot;</span>, <span class="at">full_path =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb13-3"><a href="#cb13-3" tabindex="-1"></a>full_paths</span>
+<span id="cb13-4"><a href="#cb13-4" tabindex="-1"></a><span class="co">#&gt; [1] &quot;/private/var/folders/9h/nkjq6vss7mqdl4ck7q1hd8ph0000gp/T/RtmpYEiio1/bids_example_ds001/sub-01/func/sub-01_task-balloonanalogrisktask_run-01_bold.nii.gz&quot;</span></span>
+<span id="cb13-5"><a href="#cb13-5" tabindex="-1"></a><span class="co">#&gt; [2] &quot;/private/var/folders/9h/nkjq6vss7mqdl4ck7q1hd8ph0000gp/T/RtmpYEiio1/bids_example_ds001/sub-01/func/sub-01_task-balloonanalogrisktask_run-02_bold.nii.gz&quot;</span></span>
+<span id="cb13-6"><a href="#cb13-6" tabindex="-1"></a><span class="co">#&gt; [3] &quot;/private/var/folders/9h/nkjq6vss7mqdl4ck7q1hd8ph0000gp/T/RtmpYEiio1/bids_example_ds001/sub-01/func/sub-01_task-balloonanalogrisktask_run-03_bold.nii.gz&quot;</span></span>
+<span id="cb13-7"><a href="#cb13-7" tabindex="-1"></a></span>
+<span id="cb13-8"><a href="#cb13-8" tabindex="-1"></a><span class="co"># Check that files actually exist</span></span>
+<span id="cb13-9"><a href="#cb13-9" tabindex="-1"></a><span class="fu">all</span>(<span class="fu">file.exists</span>(full_paths))</span>
+<span id="cb13-10"><a href="#cb13-10" tabindex="-1"></a><span class="co">#&gt; [1] TRUE</span></span></code></pre></div>
+</div>
+</div>
+<div id="next-steps" class="section level2">
+<h2>Next Steps</h2>
+<p>This quickstart covered the basic functionality of bidser for
+querying BIDS datasets. For more advanced usage, see:</p>
+<ul>
+<li><strong>fMRIPrep integration</strong>: Working with preprocessed
+derivatives</li>
+<li><strong>Data loading</strong>: Reading neuroimaging data with
+<code>neurobase</code> or <code>RNifti</code></li>
+<li><strong>Confound regression</strong>: Using physiological and motion
+regressors</li>
+<li><strong>Group analysis</strong>: Combining data across subjects
+efficiently</li>
+</ul>
+</div>
+<div id="reading-files-produced-by-fmriprep" class="section level2">
+<h2>Reading files produced by FMRIPrep</h2>
+<p>If you have processed a dataset with FMRIPrep, <code>bidser</code>
+can be used to read in many of the resultant derivative files. If a
+project has an FMRIPrep derivatives folder, then we can read in the BIDS
+hierarchy plus derivatives as follows:</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" tabindex="-1"></a><span class="co"># Download an fMRIPrep example dataset</span></span>
+<span id="cb14-2"><a href="#cb14-2" tabindex="-1"></a>deriv_path <span class="ot">&lt;-</span> <span class="fu">get_example_bids_dataset</span>(<span class="st">&quot;ds000001-fmriprep&quot;</span>)</span>
+<span id="cb14-3"><a href="#cb14-3" tabindex="-1"></a>proj_deriv <span class="ot">&lt;-</span> <span class="fu">bids_project</span>(deriv_path, <span class="at">fmriprep =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb14-4"><a href="#cb14-4" tabindex="-1"></a></span>
+<span id="cb14-5"><a href="#cb14-5" tabindex="-1"></a>proj_deriv</span>
+<span id="cb14-6"><a href="#cb14-6" tabindex="-1"></a></span>
+<span id="cb14-7"><a href="#cb14-7" tabindex="-1"></a><span class="co"># Convenience functions for derivative files, e.g. preprocessed scans:</span></span>
+<span id="cb14-8"><a href="#cb14-8" tabindex="-1"></a>pscans <span class="ot">&lt;-</span> <span class="fu">preproc_scans</span>(proj_deriv)</span>
+<span id="cb14-9"><a href="#cb14-9" tabindex="-1"></a><span class="fu">head</span>(<span class="fu">as.character</span>(pscans))</span>
+<span id="cb14-10"><a href="#cb14-10" tabindex="-1"></a></span>
+<span id="cb14-11"><a href="#cb14-11" tabindex="-1"></a><span class="co"># Read confound files</span></span>
+<span id="cb14-12"><a href="#cb14-12" tabindex="-1"></a>conf <span class="ot">&lt;-</span> <span class="fu">read_confounds</span>(proj_deriv, <span class="at">subid =</span> <span class="st">&quot;01&quot;</span>)</span></code></pre></div>
+</div>
+
+
+
+<!-- code folding -->
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
