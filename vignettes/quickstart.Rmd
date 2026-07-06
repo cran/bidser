@@ -1,21 +1,23 @@
 ---
 title: Getting Started with bidser
-output: rmarkdown::html_vignette
-vignette: >
-  %\VignetteIndexEntry{Getting Started with bidser}
-  %\VignetteEngine{knitr::rmarkdown}
-  %\VignetteEncoding{UTF-8}
+output:
+  rmarkdown::html_vignette:
+    toc: yes
+    toc_depth: 2.0
+    css: albers.css
+header-includes:
+  - '<script src="albers.js"></script>'
 params:
   family: red
-css: albers.css
+  preset: homage
 resource_files:
 - albers.css
 - albers.js
-includes:
-  in_header: |-
-    <script src="albers.js"></script>
-    <script>document.addEventListener('DOMContentLoaded',function(){document.body.classList.add('palette-red');});</script>
 
+vignette: |
+  %\VignetteIndexEntry{Getting Started with bidser}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
 ---
 
 ```{r, include = FALSE}
@@ -28,6 +30,12 @@ knitr::opts_chunk$set(
 ```
 
 ```{r theme-setup, include = FALSE}
+if (requireNamespace("ggplot2", quietly = TRUE) &&
+    requireNamespace("albersdown", quietly = TRUE)) {
+  ggplot2::theme_set(
+    albersdown::theme_albers(family = params$family, preset = params$preset)
+  )
+}
 suppressPackageStartupMessages({
   library(bidser)
   library(tibble)
@@ -36,6 +44,21 @@ suppressPackageStartupMessages({
   library(gluedown)
 })
 ```
+
+```{r albers-classes, echo=FALSE, results='asis'}
+cat(sprintf(
+  paste0(
+    '<script>document.addEventListener("DOMContentLoaded",function(){',
+    'document.body.classList.remove("palette-red","palette-lapis","palette-ochre","palette-teal","palette-green","palette-violet","preset-homage","preset-study","preset-structural","preset-adobe","preset-midnight");',
+    'document.body.classList.add("palette-%s","preset-%s");',
+    '});</script>'
+  ),
+  params$family,
+  params$preset
+))
+```
+
+
 
 ## Introduction to bidser
 
@@ -104,11 +127,11 @@ bids_summary(proj)
 
 ### Finding Files by Type
 
-bidser provides several ways to find files. Let's start with the most common neuroimaging file types:
+Let's find the most common neuroimaging file types:
 
 ```{r}
 # Find all anatomical T1-weighted images
-t1w_files <- search_files(proj, regex = "T1w\\.nii", full_path = FALSE)
+t1w_files <- query_files(proj, regex = "T1w\\.nii", full_path = FALSE)
 head(t1w_files)
 
 # Find all functional BOLD scans
@@ -191,6 +214,43 @@ trial_counts <- events_data %>%
 trial_counts
 ```
 
+## Working with Metadata Sidecars
+
+BIDS stores acquisition metadata in JSON sidecars. `ds001` keeps its
+acquisition metadata in a single task-level sidecar
+(`task-balloonanalogrisktask_bold.json`) that every run shares, rather than one
+sidecar per BOLD file. `read_sidecar()` reads the sidecar files that actually
+exist:
+
+```{r}
+# Read the task-level sidecar directly
+direct_sidecars <- read_sidecar(
+  proj,
+  task = "balloonanalogrisktask",
+  inherit = FALSE
+)
+
+nrow(direct_sidecars)
+direct_sidecars %>% select(any_of(c("RepetitionTime", "TaskName")))
+```
+
+To get the *effective* metadata for a specific scan, use `get_metadata()`. It
+follows the BIDS inheritance principle and walks up from the file to task- and
+dataset-level sidecars, so even though `sub-01` has no file-level JSON of its
+own, the task-level `RepetitionTime` is resolved for its BOLD run:
+
+```{r}
+# Resolve effective metadata for a specific BOLD file
+resolved_meta <- get_metadata(proj, bold_files[[1]], inherit = TRUE)
+
+names(resolved_meta)
+resolved_meta$RepetitionTime
+```
+
+Use `read_sidecar()` when you want the sidecar files themselves, and
+`get_metadata()` when you want the metadata that applies to a particular scan
+after inheritance.
+
 ## Working with Individual Subjects
 
 The `bids_subject()` function provides a convenient interface for working with data from a single subject. It returns a lightweight object with helper functions that automatically filter data for that subject.
@@ -243,68 +303,187 @@ subject_trial_summary <- lapply(participants(proj)[1:3], function(subj_id) {
 subject_trial_summary
 ```
 
-## Advanced Querying
+## Advanced Querying with `query_files()`
 
-### Custom File Searches
+`query_files()` is the primary file-finding API in bidser. It supports
+exact, regex, and glob matching modes, scoped searches across raw data and
+derivatives, and can return either paths or a tibble with parsed entities.
 
-The `search_files()` function is very flexible for custom queries:
+### Match Modes
 
 ```{r}
-# Find all JSON sidecar files
-json_files <- search_files(proj, regex = "\\.json$")
-cat("Found", length(json_files), "JSON files\n")
+# Exact entity matching -- reproducible, no regex surprises
+exact_bold <- query_files(
+  proj,
+  regex = "bold\\.nii\\.gz$",
+  subid = "01",
+  task = "balloonanalogrisktask",
+  match_mode = "exact"
+)
+cat("Exact-match BOLD files:", length(exact_bold), "\n")
 
-# Find files for specific runs
-run1_files <- search_files(proj, regex = "bold", run = "01")
-cat("Found", length(run1_files), "files from run 01\n")
+# Regex entity matching -- select multiple values with patterns
+regex_bold <- query_files(
+  proj,
+  regex = "bold\\.nii\\.gz$",
+  subid = "0[1-3]",
+  task = "balloon.*",
+  match_mode = "regex"
+)
+cat("Regex-match BOLD files:", length(regex_bold), "\n")
 
-# Complex pattern matching: T1w files for subjects 01-05
-t1w_subset <- search_files(proj, regex = "T1w", subid = "0[1-5]")
-cat("Found", length(t1w_subset), "T1w files for subjects 01-05\n")
+# Glob matching -- shell-style wildcards
+glob_bold <- query_files(
+  proj,
+  regex = "bold\\.nii\\.gz$",
+  subid = "0*",
+  match_mode = "glob"
+)
+cat("Glob-match BOLD files:", length(glob_bold), "\n")
 ```
 
-### Getting Full File Paths
-
-Sometimes you need the complete file paths for analysis:
+### Entity Presence, Extension, and Datatype Filters
 
 ```{r}
-# Get full paths to functional scans for analysis
+# Require the queried entity to actually exist on returned files
+task_annotated <- query_files(
+  proj,
+  regex = "\\.nii\\.gz$",
+  task = ".*",
+  require_entity = TRUE,
+  scope = "raw"
+)
+cat("Files with an explicit task entity:", length(task_annotated), "\n")
+
+# Filter by extension and datatype directly
+json_files <- query_files(proj, extension = "\\.json$")
+cat("JSON files:", length(json_files), "\n")
+
+func_niftis <- query_files(proj, datatype = "func", extension = "\\.nii\\.gz$")
+cat("Functional NIfTIs:", length(func_niftis), "\n")
+```
+
+### Tibble Output with Parsed Entities
+
+```{r}
+# Return a tibble instead of paths -- includes all parsed BIDS entities
+bold_tbl <- query_files(
+  proj,
+  regex = "bold\\.nii\\.gz$",
+  subid = "0[1-3]",
+  return = "tibble"
+)
+bold_tbl |> select(path, subid, task, run)
+```
+
+The tibble is sorted deterministically by subject, session, task, run, and path.
+
+### Scoped Queries and Derivatives
+
+When derivatives are present, `scope` controls where to search and `pipeline`
+selects specific derivative pipelines:
+
+```{r derivatives-query, eval = FALSE}
+deriv_path <- get_example_bids_dataset("ds000001-fmriprep")
+proj_deriv <- bids_project(deriv_path)
+
+# Search only derivatives from a specific pipeline
+prep_bold <- query_files(
+  proj_deriv,
+  regex = "bold\\.nii\\.gz$",
+  desc = "preproc",
+  scope = "derivatives",
+  pipeline = "fmriprep",
+  match_mode = "exact"
+)
+
+# Or use the convenience wrapper
+deriv_bold <- derivative_files(proj_deriv, pipeline = "fmriprep",
+                               regex = "bold\\.nii\\.gz$")
+
+# Search everywhere and get a tibble with scope/pipeline columns
+all_bold <- query_files(
+  proj_deriv,
+  regex = "bold\\.nii\\.gz$",
+  scope = "all",
+  return = "tibble"
+)
+```
+
+### Permissive Loading
+
+`bids_project()` can handle real-world datasets missing `participants.tsv` --
+subjects are inferred from the directory tree:
+
+```{r permissive-project, eval = FALSE}
+proj_relaxed <- bids_project(
+  "/path/to/bids",
+  strict_participants = FALSE
+)
+
+# Check where participant IDs came from
+participants(proj_relaxed, as_tibble = TRUE)
+
+# See which derivative pipelines were discovered
+derivative_pipelines(proj_relaxed)
+```
+
+### Run-Level Variables and Report Data
+
+`variables_table()` gives you a run-level tibble that nests scan inventory,
+events, and confounds -- ready for downstream R workflows:
+
+```{r variables-report, eval = FALSE}
+vars <- variables_table(
+  proj_deriv,
+  scope = "all",
+  pipeline = "fmriprep"
+)
+
+vars[, c(".subid", ".task", ".run", "n_scans", "n_events", "n_confound_rows")]
+
+report <- bids_report(proj_deriv, scope = "all", pipeline = "fmriprep")
+report
+```
+
+### Full File Paths
+
+When you need absolute paths for analysis tools:
+
+```{r}
 full_paths <- func_scans(proj, subid = "01", full_path = TRUE)
 full_paths
 
-# Check that files actually exist
 all(file.exists(full_paths))
 ```
 
-## Next Steps
+## Working with fMRIPrep Derivatives
 
-This quickstart covered the basic functionality of bidser for querying BIDS datasets. For more advanced usage, see:
-
-- **fMRIPrep integration**: Working with preprocessed derivatives
-- **Data loading**: Reading neuroimaging data with `neurobase` or `RNifti`
-- **Confound regression**: Using physiological and motion regressors
-- **Group analysis**: Combining data across subjects efficiently
-
-## Reading files produced by FMRIPrep
-
-If you have processed a dataset with FMRIPrep, `bidser` can be used to read in many of the resultant derivative files. If a project has an FMRIPrep derivatives folder, then we can read in the BIDS hierarchy plus derivatives as follows:
+`bidser` automatically discovers derivative pipelines under `derivatives/`.
+You can query preprocessed scans, confounds, and masks through `query_files()`:
 
 ```{r derivatives, eval = FALSE}
-# Download an fMRIPrep example dataset
 deriv_path <- get_example_bids_dataset("ds000001-fmriprep")
-proj_deriv <- bids_project(deriv_path, fmriprep = TRUE)
+proj_deriv <- bids_project(deriv_path)
 
-proj_deriv
+# See which pipelines were discovered
+derivative_pipelines(proj_deriv)
 
-# Convenience functions for derivative files, e.g. preprocessed scans:
-pscans <- preproc_scans(proj_deriv)
-head(as.character(pscans))
+# Query preprocessed BOLD scans
+preproc <- query_files(
+  proj_deriv,
+  regex = "bold\\.nii\\.gz$",
+  desc = "preproc",
+  scope = "derivatives",
+  pipeline = "fmriprep",
+  return = "tibble"
+)
+head(preproc$path)
 
-# Read confound files
+# Read confound regressors
 conf <- read_confounds(proj_deriv, subid = "01")
 ```
 
 ```{r cleanup, include=FALSE}
-if (exists("ds001_path")) unlink(ds001_path, recursive = TRUE)
-if (exists("deriv_path")) unlink(deriv_path, recursive = TRUE)
+# Example datasets are cached by get_example_bids_dataset(); leave them in place.
 ```

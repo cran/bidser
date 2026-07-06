@@ -17,9 +17,10 @@ status](https://www.r-pkg.org/badges/version/bidser)](https://CRAN.R-project.org
 [BIDS](https://bids.neuroimaging.io/) in R – (it’s a start!)
 
 The goal of bidser is to make working with the BIDS neuroimaging format
-convenient in R. Currently there is support for MRI data and some
-support for some [fmriprep](https://fmriprep.org/en/stable/)
-derivatives.
+convenient in R. Current support is strongest for MRI datasets, with
+explicit query helpers, metadata inheritance, derivative pipeline
+discovery, and compatibility-oriented support for
+[fmriprep](https://fmriprep.org/en/stable/) workflows.
 
 ## Installation
 
@@ -34,7 +35,27 @@ devtools::install_github("bbuchsbaum/bidser")
 
 See <https://bbuchsbaum.github.io/bidser/articles/quickstart.html>
 
-<!-- albersdown:theme-note:start -->
-## Albers theme
-This package uses the albersdown theme. Existing vignette theme hooks are replaced so `albers.css` and local `albers.js` render consistently on CRAN and GitHub Pages. The palette family is provided via `params$family` (default 'red'). The pkgdown site uses `template: { package: albersdown }`.
-<!-- albersdown:theme-note:end -->
+## fMRIPrep confounds
+
+`read_confounds()` selects nuisance regressors from fMRIPrep confound
+tables. Rather than hand-listing version-specific column names, use the
+high-level, version-robust helpers:
+
+``` r
+# Named, version-robust sets (resolve to whatever columns your dataset has)
+read_confounds(proj, cvars = confound_set("motion24"))
+read_confounds(proj, cvars = confound_set("36p"))
+
+# PCA + raw denoising strategies (recommended modern default)
+read_confounds(proj, cvars = confound_strategy("pcabasic80"))
+
+# Discover what is available
+list_confound_sets()
+list_confound_strategies()
+```
+
+Code that previously reached into the unexported
+`bidser:::DEFAULT_CVARS2` should switch to the stable public handle
+`confound_set("legacy_default")`, which returns the identical 26-name
+set. See `?read_confounds`, `?confound_set`, and the
+*confounds-and-variables* vignette for details.

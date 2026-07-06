@@ -38,7 +38,7 @@
 #'   sub01_check <- check_func_scans(proj, subid="01")
 #'   
 #'   # Clean up
-#'   unlink(ds001_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires internet connection: ", e$message)
 #' })
@@ -49,7 +49,6 @@
 #' @importFrom dplyr bind_rows tibble filter
 #' @importFrom tidyr unnest
 #' @importFrom stringr str_detect
-#' @importFrom magrittr %>%
 #' @export
 check_func_scans <- function(x) {
   if (!inherits(x, "bids_project")) {
@@ -166,20 +165,18 @@ check_func_scans <- function(x) {
 #'                           task="balloonanalogrisktask")
 #'   
 #'   # Clean up
-#'   unlink(ds001_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires internet connection: ", e$message)
 #' })
 #' }
 #'
 #' @importFrom dplyr filter mutate tibble bind_rows group_by summarize
-#' @importFrom assertthat assert_that
 #' @importFrom stringr str_detect str_match
-#' @importFrom stringdist stringdistmatrix
 #' @importFrom rlang sym
 #' @export
 file_pairs <- function(x, pair=c("bold-events", "preproc-events"), task=".*", matchon=c("run", "task"), ...) {
-  assertthat::assert_that(inherits(x, "bids_project"))
+  if (!inherits(x, "bids_project")) stop("`x` must be a 'bids_project' object", call. = FALSE)
   
   pair <- match.arg(pair)
   sids <- participants(x)
@@ -202,20 +199,20 @@ file_pairs <- function(x, pair=c("bold-events", "preproc-events"), task=".*", ma
     stop("Unsupported pair: ", pair)
   }
   
+  task_pattern <- task
   results <- lapply(sids, function(s) {
-    # Filter for type1 files
-    df1 <- dplyr::filter(x$tbl,
-                         subid == s,
-                         modality == type1,
-                         stringr::str_detect(task, task))
-    df1 <- df1[grep(regex_mod1, df1$name), , drop=FALSE]
-    
-    # Filter for type2 files
-    df2 <- dplyr::filter(x$tbl,
-                         subid == s,
-                         modality == type2,
-                         stringr::str_detect(task, task))
-    df2 <- df2[grep(regex_mod2, df2$name), , drop=FALSE]
+    # Filter rows for this subject with a valid task, then separate bold vs
+    # events via the filename regex (regex_mod1 / regex_mod2).
+    # Note: the `modality` column in x$tbl is always NA (the tree attribute is
+    # never set), so we cannot filter on it. The `type` column holds the folder
+    # name ("func"/"anat") rather than file kind ("bold"/"events").
+    base_df <- dplyr::filter(x$tbl,
+                             .data$subid == s,
+                             !is.na(.data$task),
+                             stringr::str_detect(.data$task, task_pattern))
+
+    df1 <- base_df[grep(regex_mod1, base_df$name), , drop=FALSE]
+    df2 <- base_df[grep(regex_mod2, base_df$name), , drop=FALSE]
     
     # If no type2 matches
     if (nrow(df1) > 0 && nrow(df2) == 0) {
@@ -251,13 +248,16 @@ file_pairs <- function(x, pair=c("bold-events", "preproc-events"), task=".*", ma
     }
     
     # Match rows by run/task strings using stringdist
+    if (!requireNamespace("stringdist", quietly = TRUE)) {
+      stop("Package 'stringdist' is required for file_pairs(). Install with: install.packages('stringdist')", call. = FALSE)
+    }
     mat1 <- df1[, matchon, drop=FALSE]
     mat2 <- df2[, matchon, drop=FALSE]
-    
+
     # Create strings to match on
     str1 <- apply(mat1, 1, paste, collapse="-")
     str2 <- apply(mat2, 1, paste, collapse="-")
-    
+
     sdmat <- stringdist::stringdistmatrix(str1, str2)
     
     # For each row in df1, find the best match in df2 with a distance of 0

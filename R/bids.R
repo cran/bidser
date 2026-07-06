@@ -1,9 +1,6 @@
-#' @importFrom crayon green cyan magenta yellow bold
 #' @importFrom purrr partial
 #' @importFrom stats median na.omit prcomp reorder runif setNames
 #' @importFrom utils read.table
-#' @importFrom httr GET stop_for_status content
-#' @importFrom rio import
 NULL
 
 # Global variables used in dplyr/ggplot2 operations to avoid R CMD check warnings
@@ -12,7 +9,10 @@ utils::globalVariables(c(
   "subid", "session", "task", "run", "type", "kind", "modality", "suffix",
   "file_size", "file_count", "total_size", "derivative", "proportion", "total",
   "participant_id", "name", "path", "pathString", "size", "task_run", "runs",
-  "total_files", "label", "missing"
+  "total_files", "label", "missing",
+  # NSE variables in project_extensions.R
+  ".subid", ".session", ".task", ".run",
+  "n_scans", "n_events", "n_confound_rows", "n_files"
 ))
 
 # Package environment for caching
@@ -33,9 +33,9 @@ set_key <- function(fname, key, value) {
 #' infrastructure.
 #'
 #' @param x A `bids_project` object.
-#' @param transformer A function that performs the transformation. It must take 
-#'   the input file path and return the output file path. The transformer is 
-#'   responsible for creating the output file.
+#' @param transformer A function that performs the transformation. It must take
+#'   two arguments, the input file path and the output directory, and return the
+#'   output file path. The transformer is responsible for creating the output file.
 #' @param pipeline_name The name for the new derivative pipeline.
 #' @param ... Additional arguments passed to \code{\link{search_files}} to select
 #'   files (e.g., \code{subid = "01"}, \code{task = "rest"}).
@@ -49,14 +49,14 @@ set_key <- function(fname, key, value) {
 #'   proj <- bids_project(ds_path)
 #'
 #'   # Create a simple transformer that adds a description
-#'   add_desc_transformer <- function(infile) {
+#'   add_desc_transformer <- function(infile, outdir) {
 #'     entities <- encode(basename(infile))
 #'     entities$desc <- if (is.null(entities$desc)) "smooth6mm" else 
 #'                      paste(entities$desc, "smooth6mm", sep="")
 #'     
 #'     # Generate new filename
 #'     new_name <- decode_bids_entities(entities)
-#'     outfile <- file.path(dirname(infile), new_name)
+#'     outfile <- file.path(outdir, new_name)
 #'     
 #'     # For demo, just copy the file (real transformer would process it)
 #'     file.copy(infile, outfile)
@@ -96,8 +96,8 @@ bids_transform <- function(x, transformer, pipeline_name, ...) {
   
   for (infile in files_to_transform) {
     # Preserve directory structure relative to project root
-    rel_path <- gsub(paste0("^", normalizePath(x$path), .Platform$file.sep), "", 
-                     normalizePath(infile), fixed = TRUE)
+    rel_path <- gsub(paste0("^", normalizePath(x$path, winslash = "/"), "/"), "",
+                     normalizePath(infile, winslash = "/"), fixed = TRUE)
     
     # Find subject directory part for derivatives structure
     path_parts <- strsplit(rel_path, .Platform$file.sep)[[1]]
@@ -152,28 +152,48 @@ decode_bids_entities <- function(entities) {
     stop("entities must be a named list from encode()")
   }
   
-  # Standard BIDS entity order
-  ordered_keys <- c("sub", "ses", "task", "acq", "ce", "dir", "rec", "run", "echo")
+  # Standard BIDS entity order for the entities this package currently parses.
+  ordered_entities <- c(
+    subid = "sub",
+    session = "ses",
+    task = "task",
+    acquisition = "acq",
+    acq = "acq",
+    contrast = "ce",
+    ce = "ce",
+    dir = "dir",
+    reconstruction = "rec",
+    rec = "rec",
+    run = "run",
+    echo = "echo",
+    space = "space",
+    res = "res",
+    label = "label",
+    desc = "desc",
+    from = "from",
+    to = "to",
+    target = "target",
+    class = "class",
+    mod = "mod",
+    hemi = "hemi",
+    mode = "mode",
+    variant = "variant"
+  )
   
   # Build filename parts
   parts <- character(0)
   entities_copy <- entities
   
   # Add ordered entities first
-  for (key in ordered_keys) {
-    name_key <- switch(key,
-                      "sub" = "subid",
-                      "ses" = "session", 
-                      key)
-    
+  for (name_key in names(ordered_entities)) {
     if (name_key %in% names(entities_copy) && !is.null(entities_copy[[name_key]])) {
-      parts <- c(parts, paste0(key, "-", entities_copy[[name_key]]))
+      parts <- c(parts, paste0(ordered_entities[[name_key]], "-", entities_copy[[name_key]]))
       entities_copy[[name_key]] <- NULL
     }
   }
   
-  # Add remaining entities (excluding suffix, kind, type)
-  remaining_keys <- setdiff(names(entities_copy), c("suffix", "kind", "type"))
+  # Add remaining entities (excluding non-filename metadata)
+  remaining_keys <- setdiff(names(entities_copy), c("suffix", "kind", "type", "modality"))
   remaining_keys <- sort(remaining_keys) # For consistency
   
   for (key in remaining_keys) {
@@ -185,9 +205,14 @@ decode_bids_entities <- function(entities) {
   # Add kind and suffix
   kind <- entities_copy$kind %||% "unknown"
   suffix <- entities_copy$suffix %||% "nii.gz"
+  suffix <- sub("^\\.", "", suffix)
   
   base_name <- paste(parts, collapse = "_")
-  paste(base_name, kind, suffix, sep = c("_", "."))
+  if (nzchar(base_name)) {
+    paste0(base_name, "_", kind, ".", suffix)
+  } else {
+    paste0(kind, ".", suffix)
+  }
 }
 
 #' Create a simple smoothing transformer
@@ -275,10 +300,13 @@ encode.character <- function(x, ...) {
 #' @keywords internal
 #' @noRd
 list_files_github <- function(user, repo, subdir="") {
+  if (!requireNamespace("httr", quietly = TRUE)) {
+    stop("Package 'httr' is required for listing GitHub files. Install with: install.packages('httr')", call. = FALSE)
+  }
   gurl <- paste0("https://api.github.com/repos/", user, "/", repo, "/git/trees/master?recursive=1")
   req <- httr::GET(gurl)
   httr::stop_for_status(req)
-  filelist <- unlist(lapply(httr::content(req)$tree, "[", "path"), use.names = F)
+  filelist <- unlist(lapply(httr::content(req)$tree, "[", "path"), use.names = FALSE)
   if (subdir != "") {
     grep(paste0(subdir, "/"), filelist, value = TRUE, fixed = TRUE)
   } else {
@@ -287,17 +315,18 @@ list_files_github <- function(user, repo, subdir="") {
 }
 
 #' @keywords internal
-read_example <- function(project) {
-  projurl <- paste0("https://raw.githubusercontent.com/bids-standard/bids-examples/master/", project)
-  part_df <- rio::import(paste0(projurl, "/participants.tsv"))
+#' @noRd
+.bidser_child_dir_names <- function(path) {
+  if (!dir.exists(path)) {
+    return(character(0))
+  }
+  basename(list.dirs(path, recursive = FALSE, full.names = TRUE))
 }
-
 
 #' @keywords internal
 #' @noRd
-get_sessions <- function(path, sid) {
-  dnames <- basename(fs::dir_ls(paste0(path, "/", sid)))
-  ret <- str_detect(dnames, "ses-.*")
+.bidser_sessions_from_child_dirs <- function(dnames) {
+  ret <- grepl("^ses-", dnames)
   if (any(ret)) {
     dnames[ret]
   } else {
@@ -305,56 +334,217 @@ get_sessions <- function(path, sid) {
   }
 }
 
+#' @keywords internal
+#' @noRd
+get_sessions <- function(path, sid) {
+  .bidser_sessions_from_child_dirs(.bidser_child_dir_names(file.path(path, sid)))
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_datatypes_in_dirs <- function(datatype_entries, dnames) {
+  Filter(function(dt) dt$folder %in% dnames, datatype_entries)
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_normalize_subject_dirs <- function(ids) {
+  ids <- as.character(ids)
+  ids <- ids[!is.na(ids) & nzchar(ids)]
+  ids <- ifelse(grepl("^sub-", ids), ids, paste0("sub-", ids))
+  unique(ids)
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_discover_subject_dirs <- function(path, derivative_roots = character()) {
+  roots <- c(path, file.path(path, derivative_roots))
+  subject_dirs <- character(0)
+
+  for (root in roots) {
+    if (!dir.exists(root)) {
+      next
+    }
+    entries <- basename(list.dirs(root, recursive = FALSE, full.names = TRUE))
+    subject_dirs <- c(subject_dirs, entries[grepl("^sub-[A-Za-z0-9]+$", entries)])
+  }
+
+  sort(unique(subject_dirs))
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_discover_derivatives <- function(path, fmriprep = FALSE,
+                                         prep_dir = "derivatives/fmriprep",
+                                         derivatives = c("legacy", "auto", "none"),
+                                         pipelines = NULL) {
+  derivatives <- match.arg(derivatives)
+
+  roots <- character(0)
+  if (identical(derivatives, "legacy")) {
+    if (isTRUE(fmriprep) && dir.exists(file.path(path, prep_dir))) {
+      roots <- prep_dir
+    }
+  } else if (identical(derivatives, "auto")) {
+    deriv_root <- file.path(path, "derivatives")
+    if (dir.exists(deriv_root)) {
+      pipe_dirs <- basename(list.dirs(deriv_root, recursive = FALSE, full.names = TRUE))
+      subject_dirs <- pipe_dirs[grepl("^sub-[A-Za-z0-9]+$", pipe_dirs)]
+      pipeline_dirs <- pipe_dirs[!grepl("^sub-[A-Za-z0-9]+$", pipe_dirs)]
+      roots <- file.path("derivatives", pipeline_dirs)
+
+      # Some datasets place derivative subjects directly under derivatives/
+      # rather than derivatives/<pipeline>/. When the caller points prep_dir at
+      # that root, preserve it as a valid derivative pipeline.
+      if (length(subject_dirs) > 0 &&
+          file.exists(file.path(deriv_root, "dataset_description.json"))) {
+        roots <- unique(c("derivatives", roots))
+      }
+    }
+    if (isTRUE(fmriprep) && dir.exists(file.path(path, prep_dir))) {
+      roots <- unique(c(prep_dir, roots))
+    }
+  }
+
+  if (!is.null(pipelines) && length(roots) > 0) {
+    keep <- basename(roots) %in% pipelines | roots %in% pipelines
+    roots <- roots[keep]
+  }
+
+  if (length(roots) == 0) {
+    return(tibble::tibble(
+      pipeline = character(0),
+      root = character(0),
+      description = list(),
+      source = character(0)
+    ))
+  }
+
+  rows <- lapply(roots, function(root) {
+    pipeline_root <- file.path(path, root)
+    x_desc <- tryCatch(
+      read_dataset_description(pipeline_root),
+      error = function(e) NULL
+    )
+    # Keep as.list() coercion so downstream code expecting a plain list still works
+    desc <- if (!is.null(x_desc)) as.list(x_desc) else list()
+
+    tibble::tibble(
+      pipeline = basename(root),
+      root = root,
+      description = list(x_desc),
+      source = if (identical(root, prep_dir) && isTRUE(fmriprep)) "legacy" else "discovered"
+    )
+  })
+
+  dplyr::bind_rows(rows)
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_load_participants_df <- function(path, strict_participants = TRUE,
+                                         derivative_roots = character()) {
+  participants_file <- file.path(path, "participants.tsv")
+
+  if (file.exists(participants_file)) {
+    part_df <- read.table(
+      participants_file,
+      header = TRUE,
+      stringsAsFactors = FALSE,
+      colClasses = c(participant_id = "character")
+    )
+    if (!"participant_id" %in% names(part_df)) {
+      stop("participants.tsv must contain a participant_id column")
+    }
+
+    inferred_dirs <- .bidser_discover_subject_dirs(path, derivative_roots = derivative_roots)
+    if (!isTRUE(strict_participants) && length(inferred_dirs) > 0) {
+      existing <- .bidser_normalize_subject_dirs(part_df$participant_id)
+      extras <- setdiff(inferred_dirs, existing)
+      if (length(extras) > 0) {
+        warning(
+          "participants.tsv does not list all discovered subject directories; ",
+          "adding inferred participants: ", paste(extras, collapse = ", ")
+        )
+        part_df <- dplyr::bind_rows(
+          part_df,
+          tibble::tibble(participant_id = extras)
+        )
+      }
+    }
+
+    return(list(
+      part_df = tibble::as_tibble(part_df),
+      source = "file"
+    ))
+  }
+
+  if (isTRUE(strict_participants)) {
+    stop("participants.tsv is missing")
+  }
+
+  subject_dirs <- .bidser_discover_subject_dirs(path, derivative_roots = derivative_roots)
+  if (length(subject_dirs) == 0) {
+    stop("participants.tsv is missing and no subject directories could be inferred")
+  }
+
+  warning("participants.tsv is missing; inferring participants from subject directories.")
+
+  list(
+    part_df = tibble::tibble(participant_id = subject_dirs),
+    source = "filesystem"
+  )
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_default_pipeline <- function(derivatives) {
+  if (is.null(derivatives) || nrow(derivatives) == 0) {
+    return(NA_character_)
+  }
+  if ("fmriprep" %in% derivatives$pipeline) {
+    return("fmriprep")
+  }
+  derivatives$pipeline[[1]]
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_project_index_path <- function(path, index_path = NULL) {
+  if (!is.null(index_path) && nzchar(index_path)) {
+    return(index_path)
+  }
+  file.path(path, ".bidser_index.rds")
+}
+
 
 #' @keywords internal
 #' @noRd
 descend <- function(node, path, ftype, parser) {
-  # List all files in the directory
-  dnames <- basename(fs::dir_ls(paste0(path)))
-  ret <- str_detect(dnames, ftype)
-  
   # Add the folder node (e.g., 'anat', 'func')
   node <- add_node(node, ftype, folder=ftype)
-  
-  if (any(ret)) {
-    # Get all files in the folder
-    fnames <- basename(fs::dir_ls(paste0(path, "/", ftype)))
-    
-    # Debug info to see which files we're attempting to parse
-    # message("Processing ", length(fnames), " files in ", ftype, " folder at ", path)
-    
-    for (fname in fnames) {
-      # Try to parse the filename using the provided parser
-      mat <- parse(parser, fname)
-      
-      if (!is.null(mat)) {
-        # The parser matched the file - extract the results
-        keep <- sapply(mat$result, function(x) !is.null(x) && length(x) > 0)
-        res <- mat$result[keep]
-        
-        # Ensure 'kind' attribute is always set when dealing with func files
-        if (ftype == "func" && !is.null(res$suffix)) {
-          # For func files with .nii or .nii.gz extension but no explicit kind
-          if (grepl("nii(\\.gz)?$", res$suffix) && 
-              (is.null(res$kind) || is.na(res$kind) || res$kind == "")) {
-            # Explicitly set kind to "bold" for functional MRI files
-            res$kind <- "bold"
-          }
+
+  datatype_dir <- file.path(path, ftype)
+  fnames <- list.files(datatype_dir, recursive = FALSE, full.names = FALSE)
+
+  for (fname in fnames) {
+    mat <- parse(parser, fname)
+
+    if (!is.null(mat)) {
+      keep <- sapply(mat$result, function(x) !is.null(x) && length(x) > 0)
+      res <- mat$result[keep]
+
+      if (ftype == "func" && !is.null(res$suffix)) {
+        if (grepl("nii(\\.gz)?$", res$suffix) &&
+            (is.null(res$kind) || is.na(res$kind) || res$kind == "")) {
+          res$kind <- "bold"
         }
-        
-        # Create a new node for this file using parsed attributes
-        args <- c(list(fname), res)
-        n <- do.call(Node$new, args)
-        
-        # Add file path for reference
-        n$relative_path <- file.path(ftype, fname)
-        
-        # Add the file node to the parent folder node
-        node$AddChildNode(n)
-      } else {
-        # Parser didn't match - could add warning or debug info here
-        # message("Could not parse file: ", fname, " in ", ftype, " folder")
       }
+
+      args <- c(list(fname), res)
+      n <- do.call(Node$new, args)
+      n$relative_path <- file.path(ftype, fname)
+      node$AddChildNode(n)
     }
   }
   
@@ -374,6 +564,32 @@ add_file <- function(bids, name,...) {
   bids$AddChild(name, ...)
 }
 
+#' @keywords internal
+#' @noRd
+.bidser_tree_tbl <- function(bids) {
+  cols <- c("name", "type", "subid", "session", "task", "run", "modality", "suffix", "desc", "space")
+  rows <- bids$Get(function(node) {
+    lapply(cols, function(nm) {
+      val <- node[[nm]]
+      if (is.null(val) || length(val) == 0L) {
+        NA_character_
+      } else {
+        as.character(val[[1L]])
+      }
+    })
+  }, filterFun = function(node) {
+    isTRUE(node$isLeaf)
+  }, simplify = FALSE)
+
+  if (length(rows) == 0L) {
+    return(tibble::as_tibble(setNames(rep(list(character(0)), length(cols)), cols)))
+  }
+
+  tibble::as_tibble(setNames(lapply(seq_along(cols), function(i) {
+    vapply(rows, function(row) row[[i]], character(1), USE.NAMES = FALSE)
+  }), cols))
+}
+
 
 
 #' Create a BIDS Project Object
@@ -387,9 +603,26 @@ add_file <- function(bids, name,...) {
 #' @param path Character string. The file path to the root of the BIDS project.
 #'   Defaults to the current directory (".").
 #' @param fmriprep Logical. Whether to load the fMRIPrep derivatives folder hierarchy.
-#'   Defaults to FALSE.
+#'   Defaults to FALSE. This remains available as a legacy compatibility switch
+#'   for existing fMRIPrep-oriented workflows.
 #' @param prep_dir Character string. The location of the fMRIPrep subfolder relative
-#'   to the derivatives directory. Defaults to "derivatives/fmriprep".
+#'   to the derivatives directory. Defaults to "derivatives/fmriprep". New code
+#'   should prefer `derivatives = "auto"` plus [derivative_pipelines()].
+#' @param strict_participants Logical. If TRUE (default), require `participants.tsv`.
+#'   If FALSE, infer participants from `sub-*` directories when the file is
+#'   missing or incomplete.
+#' @param derivatives Derivatives loading mode:
+#'   - `"auto"` discovers available pipelines under `derivatives/` (default)
+#'   - `"legacy"` keeps the older `fmriprep`/`prep_dir` behavior
+#'   - `"none"` disables derivative discovery
+#' @param pipelines Optional character vector of derivative pipeline names (or
+#'   relative roots) to include when `derivatives = "auto"`.
+#' @param index Whether to use an on-disk file index:
+#'   - `"auto"` loads an existing index or creates one on first load (default).
+#'     The index is automatically rebuilt when the dataset directory mtime changes.
+#'   - `"none"` disables indexing
+#' @param index_path Optional path for the persisted index file. Defaults to
+#'   `file.path(path, ".bidser_index.rds")`.
 #'
 #' @return A `bids_project` object representing the BIDS project structure. The object
 #'   provides methods for:
@@ -429,50 +662,71 @@ add_file <- function(bids, name,...) {
 #'   rel_scans <- func_scans(proj, full_path=FALSE)
 #'   
 #'   # Clean up
-#'   unlink(ds001_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires internet connection: ", e$message)
 #' })
 #' }
 #'
 #' @export
-bids_project <- function(path=".", fmriprep=FALSE, prep_dir="derivatives/fmriprep") {
-  aparser <- anat_parser()
-  fparser <- func_parser()
+bids_project <- function(path=".", fmriprep=FALSE, prep_dir="derivatives/fmriprep",
+                         strict_participants = TRUE,
+                         derivatives = c("auto", "legacy", "none"),
+                         pipelines = NULL,
+                         index = c("auto", "none"),
+                         index_path = NULL) {
+  derivatives <- match.arg(derivatives)
+  index <- match.arg(index)
   
-  path <- normalizePath(path)
+  # Use forward slashes so full paths built as file.path(x$path, rel) stay
+  # consistent across platforms (Windows normalizePath() defaults to
+  # backslashes, which would produce mixed separators downstream).
+  path <- normalizePath(path, winslash = "/")
 
-  if (!file.exists(paste0(path, "/participants.tsv"))) {
-    stop("participants.tsv is missing")
-  }
+  x_desc <- tryCatch(
+    read_dataset_description(path),
+    error = function(e) {
+      warning("Could not read dataset_description.json: ", e$message)
+      NULL
+    }
+  )
+  # Keep legacy `desc` list variable for any subsequent code that uses it
+  desc <- if (!is.null(x_desc)) as.list(x_desc) else list()
 
-  if (!file.exists(paste0(path, "/dataset_description.json"))) {
-    warning("dataset_description.json is missing")
-    desc <- list()
-  } else {
-    desc <- jsonlite::read_json(paste0(path, "/dataset_description.json"))
-  }
+  deriv_info <- .bidser_discover_derivatives(
+    path = path,
+    fmriprep = fmriprep,
+    prep_dir = prep_dir,
+    derivatives = derivatives,
+    pipelines = pipelines
+  )
 
-  part_df <- read.table(paste0(path, "/participants.tsv"), header=TRUE, stringsAsFactors=FALSE, 
-                        colClasses=c(participant_id="character"))
+  participants_info <- .bidser_load_participants_df(
+    path = path,
+    strict_participants = strict_participants,
+    derivative_roots = deriv_info$root
+  )
+  part_df <- participants_info$part_df
   project_name <- basename(path)
 
   bids <- Node$new(project_name)
   bids_raw <- add_node(bids, "raw")
-  
-  if (fmriprep) {
-    #bids_prep <- bids$AddChild("derivatives/fmriprep")
-    bids_prep <- add_node(bids, prep_dir)
-    prep_func_parser <- fmriprep_func_parser()
-    prep_anat_parser <- fmriprep_anat_parser() 
-  } 
-    
-  sdirs <- as.character(part_df$participant_id)
-  
-  if (!all(stringr::str_detect(sdirs, "^sub"))) {
-    ind <- which(!str_detect(sdirs, "^sub"))
-    sdirs[ind] <- paste0("sub-", sdirs[ind])
+
+  deriv_nodes <- list()
+  if (nrow(deriv_info) > 0) {
+    for (i in seq_len(nrow(deriv_info))) {
+      deriv_nodes[[deriv_info$root[[i]]]] <- add_node(bids, deriv_info$root[[i]])
+    }
   }
+
+  # Registry-driven; add datatypes via register_datatype()
+  reg <- .bidser_get_registry()
+  raw_dts <- Filter(function(e) e$scope %in% c("raw", "both"),
+                    as.list(reg$datatypes))
+  deriv_dts <- Filter(function(e) e$scope %in% c("derivative", "both"),
+                      as.list(reg$datatypes))
+
+  sdirs <- .bidser_normalize_subject_dirs(part_df$participant_id)
   
   has_sessions <- FALSE
 
@@ -480,8 +734,15 @@ bids_project <- function(path=".", fmriprep=FALSE, prep_dir="derivatives/fmripre
 
   for (sdir in sdirs) {
     # Check if subject exists in raw data or derivatives
-    has_raw_data <- file.exists(paste0(path, "/", sdir))
-    has_derivatives_data <- fmriprep && file.exists(paste0(path, "/", prep_dir, "/", sdir))
+    raw_subject_dir <- file.path(path, sdir)
+    has_raw_data <- dir.exists(raw_subject_dir)
+    raw_subject_dirs <- if (has_raw_data) {
+      .bidser_child_dir_names(raw_subject_dir)
+    } else {
+      character(0)
+    }
+    derivative_rows <- deriv_info[file.exists(file.path(path, deriv_info$root, sdir)), , drop = FALSE]
+    has_derivatives_data <- nrow(derivative_rows) > 0
     
     # Skip if subject doesn't exist in either location
     if (!has_raw_data && !has_derivatives_data) {
@@ -496,14 +757,23 @@ bids_project <- function(path=".", fmriprep=FALSE, prep_dir="derivatives/fmripre
     if (has_raw_data) {
       node <- add_node(bids_raw, sdir)
     }
-    
+
+    derivative_subject_nodes <- list()
     if (has_derivatives_data) {
-      prepnode <- add_node(bids_prep, sdir)
+      for (k in seq_len(nrow(derivative_rows))) {
+        root <- derivative_rows$root[[k]]
+        derivative_subject_nodes[[root]] <- add_node(deriv_nodes[[root]], sdir)
+      }
     }
 
-    # Get sessions from raw data if it exists, otherwise from derivatives
-    sessions_path <- if (has_raw_data) path else paste0(path, "/", prep_dir)
-    sessions <- get_sessions(sessions_path, sdir)
+    # Get sessions from raw data if it exists, otherwise from the default derivative root
+    default_deriv_root <- if (has_derivatives_data) derivative_rows$root[[1]] else NULL
+    sessions_path <- if (has_raw_data) path else file.path(path, default_deriv_root)
+    sessions <- if (has_raw_data) {
+      .bidser_sessions_from_child_dirs(raw_subject_dirs)
+    } else {
+      get_sessions(sessions_path, sdir)
+    }
 
     if (length(sessions) > 0) {
       has_sessions <- TRUE
@@ -511,46 +781,114 @@ bids_project <- function(path=".", fmriprep=FALSE, prep_dir="derivatives/fmripre
         # Process raw data sessions if they exist
         if (has_raw_data) {
           snode <- add_node(node, sess, session=gsub("ses-", "", sess))
-          descend(snode, paste0(path, "/", sdir, "/", sess), "anat", aparser)
-          descend(snode, paste0(path, "/", sdir, "/", sess), "func", fparser)
+          sess_base <- paste0(path, "/", sdir, "/", sess)
+          sess_dirs <- .bidser_child_dir_names(sess_base)
+          for (dt in .bidser_datatypes_in_dirs(raw_dts, sess_dirs)) {
+            descend(snode, sess_base, dt$folder, dt$parser_fn)
+          }
         }
-        
-        # Process derivatives sessions if they exist
+
+        # Process derivative sessions if they exist
         if (has_derivatives_data) {
-          snode_prepped <- add_node(prepnode, sess, session=gsub("ses-", "", sess))
-          descend(snode_prepped, paste0(path, "/", prep_dir, "/", sdir, "/", sess), "anat", prep_anat_parser)
-          descend(snode_prepped, paste0(path, "/", prep_dir, "/", sdir, "/", sess), "func", prep_func_parser)
+          for (k in seq_len(nrow(derivative_rows))) {
+            root <- derivative_rows$root[[k]]
+            prepnode <- derivative_subject_nodes[[root]]
+            snode_prepped <- add_node(prepnode, sess, session=gsub("ses-", "", sess))
+            sess_base <- file.path(path, root, sdir, sess)
+            sess_dirs <- .bidser_child_dir_names(sess_base)
+            for (dt in .bidser_datatypes_in_dirs(deriv_dts, sess_dirs)) {
+              descend(snode_prepped, sess_base, dt$folder, dt$parser_fn)
+            }
+          }
         }
       }
     } else {
       # No sessions - process directly
       if (has_raw_data) {
-        descend(node, paste0(path, "/", sdir), "anat", aparser)
-        descend(node, paste0(path, "/", sdir), "func", fparser)
+        sub_base <- paste0(path, "/", sdir)
+        for (dt in .bidser_datatypes_in_dirs(raw_dts, raw_subject_dirs)) {
+          descend(node, sub_base, dt$folder, dt$parser_fn)
+        }
       }
-      
+
       if (has_derivatives_data) {
-        descend(prepnode, paste0(path, "/", prep_dir, "/", sdir), "anat", prep_anat_parser)
-        descend(prepnode, paste0(path, "/", prep_dir, "/", sdir), "func", prep_func_parser)
+        for (k in seq_len(nrow(derivative_rows))) {
+          root <- derivative_rows$root[[k]]
+          prepnode <- derivative_subject_nodes[[root]]
+          sub_base <- file.path(path, root, sdir)
+          sub_dirs <- .bidser_child_dir_names(sub_base)
+          for (dt in .bidser_datatypes_in_dirs(deriv_dts, sub_dirs)) {
+            descend(prepnode, sub_base, dt$folder, dt$parser_fn)
+          }
+        }
       }
     }
     
     # pb$tick()
   }
   
-  tbl <- tibble::as_tibble(data.tree::ToDataFrameTypeCol(bids, 'name', 'type', 'subid', 'session', 'task', 'run', 'modality', 'suffix', 'desc', 'space'))
-  tbl <- tbl %>% select(-starts_with("level_"))
+  tbl <- .bidser_tree_tbl(bids)
+
+  legacy_prep_dir <- ""
+  if (nrow(deriv_info) > 0 && (isTRUE(fmriprep) || identical(derivatives, "auto"))) {
+    if (!is.null(prep_dir) && nzchar(prep_dir) && prep_dir %in% deriv_info$root) {
+      legacy_prep_dir <- prep_dir
+    } else if ("fmriprep" %in% deriv_info$pipeline) {
+      legacy_prep_dir <- deriv_info$root[[match("fmriprep", deriv_info$pipeline)]]
+    }
+  }
+  legacy_has_fmriprep <- nzchar(legacy_prep_dir)
   
-  ret <- list(name=project_name, 
+  project_index_path <- .bidser_project_index_path(path, index_path)
+
+  ret <- list(name=project_name,
               part_df=part_df,
               bids_tree = bids,
               tbl = tbl,
               path=path,
-              has_fmriprep=fmriprep,
-              prep_dir=if (fmriprep) prep_dir else "",
+              description = x_desc,
+              participants_source = participants_info$source,
+              strict_participants = strict_participants,
+              derivatives = deriv_info,
+              derivatives_mode = derivatives,
+              has_derivatives = nrow(deriv_info) > 0,
+              default_pipeline = .bidser_default_pipeline(deriv_info),
+              has_fmriprep=legacy_has_fmriprep,
+              prep_dir=legacy_prep_dir,
+              requested_fmriprep = isTRUE(fmriprep),
+              index_path = project_index_path,
+              index_session_key = .bidser_new_index_session_key(path, project_index_path),
+              index = NULL,
+              index_state = NULL,
+              has_index = FALSE,
+              index_mode = index,
               has_sessions=has_sessions)
 
   class(ret) <- "bids_project"
+
+  if (identical(index, "auto")) {
+    state <- .bidser_load_cached_index_state(
+      ret,
+      refresh = TRUE,
+      persist = TRUE,
+      refresh_sidecars = FALSE
+    )
+    if (!is.null(state)) {
+      ret$index_state <- state
+      ret$index <- .bidser_index_state_manifest_tibble(state)
+      ret$has_index <- TRUE
+    }
+  }
+
+  if (identical(index, "auto") && !isTRUE(ret$has_index)) {
+    idx <- tryCatch(bids_index(ret, rebuild = TRUE, persist = TRUE), error = function(e) NULL)
+    if (is.data.frame(idx)) {
+      ret$index <- tibble::as_tibble(idx)
+      ret$index_state <- .bidser_load_cached_index_state(ret, refresh = FALSE, persist = FALSE)
+      ret$has_index <- TRUE
+    }
+  }
+
   ret
 }
 
@@ -577,6 +915,7 @@ print.bids_project <- function(x, ...) {
     # fallback to original print if crayon not available
     cat("project: ", x$name, "\n")
     cat("participants (n):", nrow(x$part_df), "\n")
+    cat("participants source:", x$participants_source, "\n")
     cat("tasks: ", tasks(x), "\n")
     if (x$has_sessions) {
       cat("sessions: ", sessions(x), "\n")
@@ -584,6 +923,10 @@ print.bids_project <- function(x, ...) {
     if (x$has_fmriprep) {
       cat("fmriprep: ", x$prep_dir, "\n")
     }
+    if (isTRUE(x$has_derivatives)) {
+      cat("derivative pipelines:", paste(x$derivatives$pipeline, collapse = ", "), "\n")
+    }
+    cat("index:", if (isTRUE(x$has_index)) "enabled" else "disabled", "\n")
     cat("image types: ", unique(x$tbl$type[!is.na(x$tbl$type)]), "\n")
     cat("modalities: ", paste(unique(x$tbl$modality[!is.na(x$tbl$modality)]), collapse=", "), "\n")
     cat("keys: ", paste(unique(x$bids_tree$attributesAll), collapse=", "), "\n")
@@ -603,6 +946,7 @@ print.bids_project <- function(x, ...) {
   cat(crayon::bold("BIDS Project Summary"), "\n")
   cat(crayon::bold("Project Name: "), project_col, "\n")
   cat(crayon::bold("Participants (n): "), participant_count_col, "\n")
+  cat(crayon::bold("Participants Source: "), crayon::yellow(x$participants_source), "\n")
   cat(crayon::bold("Tasks: "), task_list_col, "\n")
   
   if (x$has_sessions) {
@@ -614,6 +958,20 @@ print.bids_project <- function(x, ...) {
   if (x$has_fmriprep) {
     cat(crayon::bold("fMRIPrep Derivatives: "), crayon::magenta(x$prep_dir), "\n")
   }
+
+  if (isTRUE(x$has_derivatives)) {
+    cat(
+      crayon::bold("Derivative Pipelines: "),
+      crayon::magenta(paste(x$derivatives$pipeline, collapse = ", ")),
+      "\n"
+    )
+  }
+
+  cat(
+    crayon::bold("Index: "),
+    if (isTRUE(x$has_index)) crayon::green("enabled") else crayon::yellow("disabled"),
+    "\n"
+  )
   
   # Image types
   img_types <- unique(x$tbl$type[!is.na(x$tbl$type)])
@@ -631,6 +989,24 @@ print.bids_project <- function(x, ...) {
   cat(crayon::bold("Keys: "), keys_col, "\n")
   
   invisible(x)
+}
+
+#' @export
+#' @rdname bids_version
+#' @method bids_version bids_project
+bids_version.bids_project <- function(x, ...) {
+  if (!is.null(x$description)) {
+    bids_version(x$description)
+  } else {
+    x$bids_version %||% NA_character_
+  }
+}
+
+#' @export
+#' @rdname bids_version
+#' @method bids_version mock_bids_project
+bids_version.mock_bids_project <- function(x, ...) {
+  x$bids_version %||% NA_character_
 }
 
 
@@ -660,13 +1036,15 @@ tasks.bids_project <- function(x, ...) {
 #' @importFrom stringr str_remove
 #' @export
 #' @rdname participants-method
-participants.bids_project <- function(x, ...) {
+participants.bids_project <- function(x, as_tibble = FALSE, ...) {
+  if (isTRUE(as_tibble)) {
+    return(.bidser_participants_tibble(x))
+  }
+
   collected_ids <- character(0)
 
   # Get IDs from participants.tsv (part_df)
-  # These might or might not have "sub-" prefix.
   if (!is.null(x$part_df) && "participant_id" %in% names(x$part_df)) {
-    # Ensure participant_id is character and not NA
     valid_part_ids <- x$part_df$participant_id[!is.na(x$part_df$participant_id)]
     if (length(valid_part_ids) > 0) {
       collected_ids <- c(collected_ids, as.character(valid_part_ids))
@@ -674,8 +1052,6 @@ participants.bids_project <- function(x, ...) {
   }
 
   # Get IDs from parsed file structure (tbl)
-  # These are usually the numeric/alphanumeric part, e.g., "01", 
-  # and typically do not have the "sub-" prefix if parsed from "sub-01".
   if (!is.null(x$tbl) && "subid" %in% names(x$tbl)) {
     valid_subids_from_tbl <- x$tbl$subid[!is.na(x$tbl$subid)]
     if (length(valid_subids_from_tbl) > 0) {
@@ -687,21 +1063,47 @@ participants.bids_project <- function(x, ...) {
     return(character(0))
   }
 
-  # Make unique first
   unique_ids_before_stripping <- unique(collected_ids)
-  
-  # Remove "sub-" prefix if present from all collected IDs
   ids_stripped <- stringr::str_remove(unique_ids_before_stripping, "^sub-")
-  
-  # Make unique again after stripping prefix to handle cases like ("sub-01", "01") -> ("01", "01") -> "01"
-  # Also remove any empty strings that might result from IDs like "sub-"
   final_unique_ids <- unique(ids_stripped[nchar(ids_stripped) > 0])
 
   if (length(final_unique_ids) == 0) {
     return(character(0))
   }
-  
+
   sort(final_unique_ids)
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_participants_tibble <- function(x) {
+  part_source <- x$participants_source %||% "file"
+
+  # Start from part_df if available
+  if (!is.null(x$part_df) && nrow(x$part_df) > 0) {
+    tbl <- tibble::as_tibble(x$part_df)
+    tbl$participant_id <- stringr::str_remove(as.character(tbl$participant_id), "^sub-")
+    tbl$source <- part_source
+  } else {
+    tbl <- tibble::tibble(participant_id = character(0), source = character(0))
+  }
+
+  # Merge IDs discovered from the file tree
+  if (!is.null(x$tbl) && "subid" %in% names(x$tbl)) {
+    tree_ids <- unique(x$tbl$subid[!is.na(x$tbl$subid)])
+    tree_ids <- stringr::str_remove(as.character(tree_ids), "^sub-")
+    tree_ids <- tree_ids[nchar(tree_ids) > 0]
+
+    existing <- tbl$participant_id
+    extras <- setdiff(tree_ids, existing)
+    if (length(extras) > 0) {
+      extra_tbl <- tibble::tibble(participant_id = extras, source = "filesystem")
+      tbl <- dplyr::bind_rows(tbl, extra_tbl)
+    }
+  }
+
+  tbl <- dplyr::arrange(tbl, participant_id)
+  tbl
 }
 
 
@@ -757,7 +1159,7 @@ participants.bids_project <- function(x, ...) {
 #'   rel_scans <- func_scans(proj, full_path=FALSE)
 #'   
 #'   # Clean up
-#'   unlink(ds001_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires internet connection: ", e$message)
 #' })
@@ -874,7 +1276,7 @@ str_detect_null <- function(x, pat, default=FALSE) {
 #'   res2_scans <- preproc_scans(proj, res = "2")
 #'   
 #'   # Clean up
-#'   unlink(ds_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires internet connection: ", e$message)
 #' })
@@ -1004,12 +1406,65 @@ key_match <- function(default=FALSE, ...) {
   }
 }
 
+.bidser_filesystem_search <- function(x, regex = ".*", full_path = FALSE,
+                                      strict = TRUE, filters = list()) {
+  if (is.null(x$path) || !dir.exists(x$path)) {
+    return(NULL)
+  }
+
+  filters <- .bidser_normalize_filter_names(filters)
+  rel_paths <- .bidser_list_indexed_paths(x)
+  if (length(rel_paths) == 0) {
+    return(NULL)
+  }
+  rel_paths <- gsub("\\\\", "/", rel_paths)
+  rel_paths <- rel_paths[stringr::str_detect(basename(rel_paths), regex)]
+  if (length(rel_paths) == 0) {
+    return(NULL)
+  }
+
+  keep <- vapply(rel_paths, function(rel) {
+    parsed <- .bidser_parse_entities_from_path(rel)
+    encoded <- tryCatch(encode(basename(rel)), error = function(e) NULL)
+    if (is.null(encoded)) {
+      encoded <- list()
+    }
+    entities <- utils::modifyList(parsed, encoded, keep.null = TRUE)
+
+    all(vapply(names(filters), function(key) {
+      val <- entities[[key]]
+      wildcard_missing_ok <- length(filters[[key]]) == 1L &&
+        identical(as.character(filters[[key]]), ".*")
+      if (is.null(val) || length(val) == 0 || is.na(val)) {
+        if (isTRUE(wildcard_missing_ok)) {
+          return(TRUE)
+        }
+        return(!isTRUE(strict))
+      }
+      stringr::str_detect(as.character(val[[1]]), as.character(filters[[key]]))
+    }, logical(1)))
+  }, logical(1))
+
+  ret <- unique(rel_paths[keep])
+  if (length(ret) == 0) {
+    return(NULL)
+  }
+  if (isTRUE(full_path)) {
+    ret <- file.path(x$path, ret)
+  }
+  as.vector(ret)
+}
+
 
 #' Search for files in a BIDS project
 #' 
 #' This function searches for files in a BIDS project that match a specified pattern
 #' and optional key-value criteria. It can search in both raw data and preprocessed 
 #' derivatives (if available).
+#'
+#' This method remains available for backward compatibility and flexible
+#' regex-driven searches. Prefer [query_files()] for explicit query semantics
+#' in new code.
 #'
 #' @param x A \code{bids_project} object.
 #' @param regex A regular expression to match against filenames. Default is ".*" (all files).
@@ -1038,23 +1493,48 @@ key_match <- function(default=FALSE, ...) {
 #'   full_paths <- search_files(proj, regex="events\\.tsv$", full_path=TRUE)
 #'   
 #'   # Clean up
-#'   unlink(ds001_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires internet connection: ", e$message)
 #' })
 #' }
 search_files.bids_project <- function(x, regex=".*", full_path=FALSE, strict=TRUE, ...) {
+  # Formulas passed positionally can land in regex, full_path, or strict slots.
+  # Rescue them all back into dots before splitting.
+  dots <- list(...)
+  if (inherits(strict, "formula")) {
+    dots <- c(list(strict), dots)
+    strict <- TRUE
+  }
+  if (inherits(full_path, "formula")) {
+    dots <- c(list(full_path), dots)
+    full_path <- FALSE
+  }
+  if (inherits(regex, "formula")) {
+    dots <- c(list(regex), dots)
+    regex <- ".*"
+  }
+  split_f <- .bidser_split_filters(dots)
+  formula_matcher <- .bidser_formula_matcher(split_f$formula_filters, envir = parent.frame())
+
   # Helper function to extract the relative path from a node
   extract_relative_path <- function(node) {
-    pdir_parts <- character(0) # Initialize to empty
-    if (x$has_fmriprep && nzchar(x$prep_dir)) { # Check if prep_dir is non-empty
-        pdir_parts <- strsplit(x$prep_dir, "/")[[1]]
+    derivative_roots <- .bidser_derivative_roots(x)
+    derivative_parts <- lapply(derivative_roots, function(root) strsplit(root, "/")[[1]])
+    node_rel_parts <- if (length(node$path) > 1) node$path[2:length(node$path)] else character(0)
+
+    matched_derivative_parts <- NULL
+    if (length(derivative_parts) > 0) {
+      for (parts in derivative_parts) {
+        if (length(node_rel_parts) > length(parts) &&
+            all(node_rel_parts[seq_along(parts)] == parts)) {
+          matched_derivative_parts <- parts
+          break
+        }
+      }
     }
 
-    is_prep_data <- x$has_fmriprep && 
-                   length(pdir_parts) > 0 && # Ensure pdir_parts is not empty
-                   length(node$path) > (1 + length(pdir_parts)) && 
-                   all(node$path[2:(1+length(pdir_parts))] == pdir_parts)
+    is_prep_data <- !is.null(matched_derivative_parts)
     
     if (is_prep_data) {
       paste0(node$path[2:length(node$path)], collapse="/")
@@ -1075,9 +1555,9 @@ search_files.bids_project <- function(x, regex=".*", full_path=FALSE, strict=TRU
     }
   }
   
-  search_params <- list(...)
+  search_params <- split_f$string_filters
   has_kind_param <- "kind" %in% names(search_params)
-  
+
   base_params <- search_params
   if (has_kind_param && search_params$kind == "bold") {
     base_params$kind <- NULL
@@ -1105,7 +1585,7 @@ search_files.bids_project <- function(x, regex=".*", full_path=FALSE, strict=TRU
         is_explicitly_bold <- str_detect_null(z$kind, "^bold$", default = FALSE)
         is_implicitly_bold <- FALSE
         if (!is_explicitly_bold) {
-           is_func_folder <- any(z$path == "func") 
+           is_func_folder <- any(z$path == "func")
            is_bold_filename <- str_detect(z$name, "_bold\\\\.nii(\\\\.gz)?$")
            is_implicitly_bold <- is_func_folder && is_bold_filename
         }
@@ -1126,18 +1606,30 @@ search_files.bids_project <- function(x, regex=".*", full_path=FALSE, strict=TRU
         }
       }
     }
+    if (!formula_matcher(z)) {
+      return(FALSE)
+    }
     return(TRUE)
   }
   
   ret <- x$bids_tree$Get(extract_relative_path, filterFun = filter_fun, simplify = FALSE)
-  
+  ret <- unique(unname(unlist(ret)))
+
+  fs_ret <- if (length(split_f$formula_filters) == 0L) {
+    .bidser_filesystem_search(
+      x,
+      regex = regex,
+      full_path = FALSE,
+      strict = strict,
+      filters = search_params
+    )
+  } else {
+    NULL
+  }
+  ret <- unique(c(ret, fs_ret))
   if (length(ret) == 0) {
     return(NULL)
   }
-  
-  # Ensure ret is a character vector of unique paths
-  # unlist can produce names, so unname it.
-  ret <- unique(unname(unlist(ret)))
 
   if (full_path && !is.null(ret)) {
     # file.path(x$path, ret) might be problematic if x$path is NULL (for virtual projects)
@@ -1184,12 +1676,20 @@ match_attribute <- function(x, ...) {
 #' @export
 load_all_events.bids_project <- function(x, subid=".*", task=".*", run=".*", session=".*", full_path=TRUE, ...) {
   # Find all events files matching criteria
-  event_files <- search_files(x, regex="events\\.tsv$", full_path=full_path, strict=TRUE,
-                              subid=subid, task=task, run=run, session=session, ...)
+  event_files_abs <- search_files(x, regex="events\\.tsv$", full_path=TRUE, strict=TRUE,
+                                  subid=subid, task=task, run=run, session=session, ...)
   
-  if (is.null(event_files) || length(event_files) == 0) {
+  if (is.null(event_files_abs) || length(event_files_abs) == 0) {
     message("No matching event files found.")
     return(tibble::tibble())
+  }
+
+  event_files_label <- if (isTRUE(full_path)) {
+    event_files_abs
+  } else {
+    vapply(event_files_abs, function(fn) {
+      .bidser_to_relative_path(x$path, fn)
+    }, character(1))
   }
   
   # A helper to parse metadata from file name using keys in x$tbl
@@ -1215,18 +1715,18 @@ load_all_events.bids_project <- function(x, subid=".*", task=".*", run=".*", ses
   }
   
   # Read and combine
-  df_list <- lapply(event_files, function(fn) {
-    meta <- parse_metadata(fn)
+  df_list <- Map(function(fn_abs, fn_label) {
+    meta <- parse_metadata(fn_label)
     dfx <- tryCatch({
-      readr::read_delim(fn, delim = " ", na = c("n/a", "NA"))
+      .bidser_read_events_table(fn_abs)
     }, error = function(e) {
-      warning("Failed to read file: ", fn, " - ", e$message)
+      warning("Failed to read file: ", fn_label, " - ", e$message)
       return(NULL)
     })
     if (is.null(dfx)) return(NULL)
-    dfx <- dfx %>% dplyr::mutate(.file = fn)
+    dfx <- dfx %>% dplyr::mutate(.file = fn_label)
     dplyr::bind_cols(meta, dfx)
-  })
+  }, event_files_abs, event_files_label)
   
   # Filter out any NULLs
   df_list <- df_list[!sapply(df_list, is.null)]
@@ -1324,75 +1824,88 @@ bids_summary <- function(x) {
 #'   - `issues` (character vector): Descriptions of any issues found.
 #'
 #' @export
-bids_check_compliance <- function(x) {
+bids_check_compliance <- function(x, schema_check = TRUE, schema_version = "1.10.0") {
   issues <- character(0)
-  
-  # Check for participants.tsv
-  if (!file.exists(file.path(x$path, "participants.tsv"))) {
-    issues <- c(issues, "Missing participants.tsv at the root level.")
-  }
-  
-  # Check for dataset_description.json
+  warnings <- character(0)
+
+  ## --- Required files ---
   if (!file.exists(file.path(x$path, "dataset_description.json"))) {
-    issues <- c(issues, "Missing dataset_description.json at the root level.")
+    issues <- c(issues, "Missing required file: dataset_description.json")
   }
-  
-  # Check subject directories
-  # We assume subjects are identified by directories starting with "sub-"
-  # Retrieve participant directories from the project object or files
-  sub_dirs <- list.dirs(x$path, recursive = FALSE, full.names = FALSE)
-  # Filter only directories that might be subjects (i.e. start with 'sub-')
-  # We know from the project object, or we can guess by presence in participants
-  # For a lightweight check, let's just ensure that all subjects in participants are present and start with "sub-"
+
+  ## --- Recommended files ---
+  if (!file.exists(file.path(x$path, "participants.tsv"))) {
+    warnings <- c(warnings, "Missing recommended file: participants.tsv")
+  }
+  if (!file.exists(file.path(x$path, "README")) &&
+      !file.exists(file.path(x$path, "README.md"))) {
+    warnings <- c(warnings, "Missing recommended file: README or README.md")
+  }
+  if (!file.exists(file.path(x$path, "CHANGES"))) {
+    warnings <- c(warnings, "Missing recommended file: CHANGES")
+  }
+
+  ## --- Subject directory checks ---
   expected_subs <- participants(x)
-  # participants(x) should return strings like "sub-01", "sub-02", etc.
-  
+
   for (sid in expected_subs) {
-    # participants() returns IDs without "sub-" prefix, so add it for directory checking
     sub_dir <- if (!grepl("^sub-", sid)) paste0("sub-", sid) else sid
     if (!dir.exists(file.path(x$path, sub_dir))) {
       issues <- c(issues, paste("Subject directory not found for:", sub_dir))
     }
   }
-  
-  # Check session directories if sessions are present
+
+  ## --- Session directory checks ---
   if (x$has_sessions) {
-    # We assume sessions are directories inside subject directories
-    # and should start with "ses-"
     for (sid in expected_subs) {
-      # participants() returns IDs without "sub-" prefix, so add it for directory checking
       sub_dir <- if (!grepl("^sub-", sid)) paste0("sub-", sid) else sid
       s_path <- file.path(x$path, sub_dir)
       if (dir.exists(s_path)) {
-        # list sessions
-        sess_dirs <- list.dirs(s_path, recursive = FALSE, full.names = FALSE)
-        # Filter out known raw or derivative directories
-        sess_dirs <- sess_dirs[grepl("^ses-", sess_dirs)]
-        
-        # sessions(x) returns all sessions; we can cross-check
-        proj_sess <- sessions(x)
-        # If proj_sess is NULL or empty, no sessions to check
-        if (!is.null(proj_sess) && length(proj_sess) > 0) {
-          # All sessions in proj_sess should appear as ses-xxx directories
-          # also ensure they start with 'ses-'
-          for (ss in proj_sess) {
-            sdir <- paste0("ses-", ss)
-            if (!dir.exists(file.path(s_path, sdir))) {
-              issues <- c(issues, paste("Session directory not found for:", sdir, "in", sub_dir))
-            }
-            if (!grepl("^ses-", sdir)) {
-              issues <- c(issues, paste("Session ID does not start with 'ses-':", sdir))
-            }
-          }
+        child_dirs <- basename(list.dirs(s_path, recursive = FALSE, full.names = TRUE))
+        session_like <- child_dirs[grepl("^ses", child_dirs)]
+        invalid_sessions <- session_like[!grepl("^ses-[A-Za-z0-9]+$", session_like)]
+        if (length(invalid_sessions) > 0) {
+          issues <- c(
+            issues,
+            paste("Invalid session directory name:", invalid_sessions, "in", sub_dir)
+          )
         }
       }
     }
   }
-  
-  # Determine pass/fail
+
+  ## --- Participants source provenance ---
+  participants_source <- x$participants_source %||% "file"
+
+  ## --- Schema validation pass ---
+  schema_warnings <- character(0)
+  schema_checked  <- FALSE
+  if (isTRUE(schema_check)) {
+    schema_obj <- tryCatch(
+      bids_schema(schema_version),
+      error = function(e) NULL
+    )
+    if (!is.null(schema_obj)) {
+      schema_warnings <- tryCatch(
+        .bidser_schema_check_tree(x, schema_obj),
+        error = function(e) {
+          warning("Schema check failed: ", e$message, call. = FALSE)
+          character(0)
+        }
+      )
+      schema_checked <- TRUE
+    }
+  }
+
   passed <- length(issues) == 0
-  
-  list(passed = passed, issues = issues)
+
+  list(
+    passed               = passed,
+    issues               = issues,
+    warnings             = c(warnings, schema_warnings),
+    participants_source  = participants_source,
+    schema_checked       = schema_checked
+  )
 }
 
 #' Download Example BIDS Dataset
@@ -1423,7 +1936,7 @@ bids_check_compliance <- function(x) {
 #' @export
 get_example_bids_dataset <- function(dataset_name = "ds001") {
   if (!requireNamespace("httr", quietly = TRUE)) {
-    stop("Package 'httr' is required for downloading example data")
+    stop("Package 'httr' is required for downloading example data. Install with: install.packages('httr')", call. = FALSE)
   }
   
   # Session-level cache for better performance (stored in package environment)

@@ -7,7 +7,6 @@
 #' @importFrom fs file_size dir_create file_create path_dir file_exists dir_exists
 #' @importFrom tibble as_tibble is_tibble tibble add_row deframe enframe has_name lst is_tibble
 #' @importFrom rlang sym := abort warn inform is_scalar_character is_scalar_logical list2 exec enquo quo_name is_installed is_interactive check_installed check_dots_empty check_dots_used check_dots_unnamed caller_env current_env global_env interrupt %||% maybe_missing missing_arg seq2 set_names try_fetch with_options zap format_error_bullets is_string as_name inject parse_expr eval_tidy expr exprs new_environment env env_bind env_get env_has env_parent env_parents env_poke expr_deparse f_lhs f_rhs is_call is_call_simple is_formula is_integerish is_list is_named is_null is_primitive is_true is_false is_symbol local_options parse_expr caller_env empty_env global_env is_environment new_formula new_quosure quo quo_get_env quo_get_expr quo_is_call quo_is_missing quo_is_null quo_is_symbol quos rep_along splice with_handlers
-#' @importFrom crayon has_color bold cyan green magenta yellow
 NULL
 
 # ---------------------------------------------------------------------------
@@ -146,6 +145,55 @@ generate_bids_path <- function(subid, session = NULL, datatype, fmriprep = FALSE
   path_parts <- c(path_parts, datatype)
 
   return(paste(path_parts, collapse = "/"))
+}
+
+#' @keywords internal
+#' @noRd
+mock_bids_suffix_candidates <- function(suffix) {
+  if (is.null(suffix) || is.na(suffix) || suffix == "") {
+    return(character())
+  }
+
+  suffix <- as.character(suffix)
+  if (grepl("\\.", suffix)) {
+    return(suffix)
+  }
+
+  unique(c(
+    suffix,
+    paste0(suffix, ".nii.gz"),
+    paste0(suffix, ".tsv"),
+    paste0(suffix, ".json"),
+    paste0(suffix, ".h5")
+  ))
+}
+
+#' @keywords internal
+#' @noRd
+canonicalize_mock_data_paths <- function(data, generated_paths, prep_dir = NULL) {
+  if (length(data) == 0) {
+    return(data)
+  }
+
+  data_names <- names(data)
+  canonical_names <- data_names
+
+  for (i in seq_along(data_names)) {
+    original_name <- data_names[[i]]
+    if (original_name %in% generated_paths) {
+      next
+    }
+
+    if (!is.null(prep_dir) && !startsWith(original_name, paste0(prep_dir, "/"))) {
+      prefixed_name <- file.path(prep_dir, original_name)
+      if (prefixed_name %in% generated_paths) {
+        canonical_names[[i]] <- prefixed_name
+      }
+    }
+  }
+
+  names(data) <- canonical_names
+  data
 }
 
 #' @keywords internal
@@ -517,12 +565,47 @@ create_mock_bids <- function(project_name,
       }
     }
 
-    # Generate filename and path
-    filename <- tryCatch({
+    # Generate filename and normalize shorthand suffixes like "bold" or "events".
+    suffix_candidates <- mock_bids_suffix_candidates(row$suffix)
+    filename <- NULL
+    encoded_entities <- NULL
+    chosen_suffix <- row$suffix
+
+    for (suffix_candidate in suffix_candidates) {
+      entities_try <- entities_clean
+      entities_try$suffix <- suffix_candidate
+
+      candidate_filename <- tryCatch({
+        rlang::exec(generate_bids_filename, !!!entities_try)
+      }, error = function(e) {
+        NULL
+      })
+
+      if (is.null(candidate_filename)) {
+        next
+      }
+
+      candidate_encoded <- tryCatch({
+        bidser::encode(candidate_filename)
+      }, error = function(e) {
+        NULL
+      })
+
+      if (!is.null(candidate_encoded)) {
+        filename <- candidate_filename
+        encoded_entities <- candidate_encoded
+        chosen_suffix <- suffix_candidate
+        break
+      }
+    }
+
+    if (is.null(filename)) {
+      filename <- tryCatch({
         rlang::exec(generate_bids_filename, !!!entities_clean)
-    }, error = function(e) {
+      }, error = function(e) {
         abort(paste("Error generating filename for row", i, ":", e$message))
-    })
+      })
+    }
 
     relative_dir <- generate_bids_path(
       subid = row$subid,
@@ -535,9 +618,10 @@ create_mock_bids <- function(project_name,
 
     # Use bidser::encode to get canonical entities (important!)
     # Call directly and handle any errors
-    encoded_entities <- tryCatch({
+    if (is.null(encoded_entities)) {
+      encoded_entities <- tryCatch({
         bidser::encode(filename)
-    }, error = function(e) {
+      }, error = function(e) {
         warn(paste("Could not encode generated filename:", filename, " - May impact querying. Error:", e$message))
         # Fallback: use entities from file_structure row directly with standardized names
         fallback_entities <- list(
@@ -559,21 +643,21 @@ create_mock_bids <- function(project_name,
             fallback_entities$kind <- row$kind
         } else {
             # Try to guess kind from suffix
-            if (grepl("bold", row$suffix, ignore.case = TRUE)) {
+            if (grepl("bold", chosen_suffix, ignore.case = TRUE)) {
                 fallback_entities$kind <- "bold"
                 fallback_entities$suffix <- "bold" # Extract BIDS suffix part
             } 
-            else if (grepl("T1w", row$suffix, ignore.case = TRUE)) {
+            else if (grepl("T1w", chosen_suffix, ignore.case = TRUE)) {
                 fallback_entities$kind <- "T1w"
                 fallback_entities$suffix <- "T1w"
             } 
-            else if (grepl("events.tsv", row$suffix, fixed=TRUE)) {
+            else if (grepl("events.tsv", chosen_suffix, fixed=TRUE)) {
                 fallback_entities$kind <- "events"
                 fallback_entities$suffix <- "events"
             }
             else {
                 # Default: try to extract suffix without extension
-                suffix_part <- sub("\\.[^.]*$", "", row$suffix)
+                suffix_part <- sub("\\.[^.]*$", "", chosen_suffix)
                 fallback_entities$suffix <- suffix_part
                 fallback_entities$kind <- suffix_part
             }
@@ -584,7 +668,8 @@ create_mock_bids <- function(project_name,
         fallback_entities <- fallback_entities[!sapply(fallback_entities, is.na)]
                 
         return(fallback_entities)
-    })
+      })
+    }
 
     if (is.null(encoded_entities)) {
        warn(paste("Encoding failed for:", filename, "- skipping this file in mock tree."))
@@ -653,16 +738,17 @@ create_mock_bids <- function(project_name,
     }
 
     # Track generated event and confound file paths
-    if (isTRUE(endsWith(row$suffix, "events.tsv"))) {
+    if (isTRUE(endsWith(chosen_suffix, "events.tsv"))) {
         generated_event_paths <- c(generated_event_paths, relative_path)
     }
-    if (grepl("(confounds|regressors|timeseries)", row$suffix) && endsWith(row$suffix, ".tsv")) {
+    if (grepl("(confounds|regressors|timeseries)", chosen_suffix) && endsWith(chosen_suffix, ".tsv")) {
         generated_confound_paths <- c(generated_confound_paths, relative_path)
     }
 
   } # End loop through file_structure
 
   # --- Validate Event Data ---
+  event_data <- canonicalize_mock_data_paths(event_data, generated_event_paths)
   event_data_names <- names(event_data)
   mismatched_event_paths <- event_data_names[!event_data_names %in% generated_event_paths]
   if (length(mismatched_event_paths) > 0) {
@@ -675,6 +761,7 @@ create_mock_bids <- function(project_name,
   event_data_store <- lapply(event_data, tibble::as_tibble)
 
   # --- Validate Confound Data ---
+  confound_data <- canonicalize_mock_data_paths(confound_data, generated_confound_paths, prep_dir = prep_dir)
   confound_data_names <- names(confound_data)
   mismatched_confound_paths <- confound_data_names[!confound_data_names %in% generated_confound_paths]
   if (length(mismatched_confound_paths) > 0) {
@@ -900,43 +987,44 @@ create_mock_bids <- function(project_name,
 #' print(mock_proj)
 print.mock_bids_project <- function(x, ...) {
   # Check if crayon is available and use it
-  has_crayon <- rlang::is_installed("crayon") && crayon::has_color()
+  has_crayon <- requireNamespace("crayon", quietly = TRUE) && crayon::has_color()
 
-  cat_col <- function(label, value, col_fn = crayon::cyan) {
-      if (has_crayon) {
-          cat(crayon::bold(label), col_fn(value), "\n")
-      } else {
-          cat(label, value, "\n")
-      }
+  cat_col <- function(label, value, col_fn = NULL) {
+    if (has_crayon) {
+      if (is.null(col_fn)) col_fn <- crayon::cyan
+      cat(crayon::bold(label), col_fn(value), "\n")
+    } else {
+      cat(label, value, "\n")
+    }
   }
 
   cat(if (has_crayon) crayon::bold("Mock BIDS Project Summary") else "Mock BIDS Project Summary", "\n")
   cat_col("Project Name: ", x$name)
-  cat_col("Participants (n): ", nrow(x$part_df), col_fn = crayon::green)
+  cat_col("Participants (n): ", nrow(x$part_df), col_fn = if (has_crayon) crayon::green else NULL)
 
   tasks_list <- tasks(x)
   tasks_str <- if (length(tasks_list) > 0) paste(tasks_list, collapse = ", ") else "(none)"
-  cat_col("Tasks: ", tasks_str, col_fn = crayon::yellow)
+  cat_col("Tasks: ", tasks_str, col_fn = if (has_crayon) crayon::yellow else NULL)
 
   if (x$has_sessions) {
     sessions_list <- sessions(x)
     sessions_str <- if (length(sessions_list) > 0) paste(sessions_list, collapse = ", ") else "(none)"
-    cat_col("Sessions: ", sessions_str, col_fn = crayon::yellow)
+    cat_col("Sessions: ", sessions_str, col_fn = if (has_crayon) crayon::yellow else NULL)
   }
 
   if (x$has_fmriprep) {
-    cat_col("Derivatives: ", x$prep_dir, col_fn = crayon::magenta)
+    cat_col("Derivatives: ", x$prep_dir, col_fn = if (has_crayon) crayon::magenta else NULL)
   }
 
   # Get unique datatypes from the tree structure
   datatypes <- unique(na.omit(x$bids_tree$Get("datatype", filterFun = data.tree::isLeaf)))
   dt_str <- if (length(datatypes) > 0) paste(datatypes, collapse = ", ") else "(none)"
-  cat_col("Datatypes: ", dt_str, col_fn = crayon::green)
+  cat_col("Datatypes: ", dt_str, col_fn = if (has_crayon) crayon::green else NULL)
 
   # Get unique suffixes from leaf nodes
   suffixes <- unique(na.omit(x$bids_tree$Get("suffix", filterFun = data.tree::isLeaf)))
   suf_str <- if (length(suffixes) > 0) paste(suffixes, collapse = ", ") else "(none)"
-  cat_col("Suffixes: ", suf_str, col_fn = crayon::green)
+  cat_col("Suffixes: ", suf_str, col_fn = if (has_crayon) crayon::green else NULL)
 
   # Get all unique keys stored in leaf nodes
   all_keys <- unique(unlist(x$bids_tree$Get(function(node) names(node$attributes), filterFun = data.tree::isLeaf)))
@@ -944,7 +1032,7 @@ print.mock_bids_project <- function(x, ...) {
   internal_keys <- c("name", "relative_path", "children", "level", "parent", "path", "path_string", "position", "count", "is_leaf", "is_root", "root", "height")
   bids_keys <- sort(setdiff(all_keys, internal_keys))
   keys_str <- if (length(bids_keys) > 0) paste(bids_keys, collapse = ", ") else "(none)"
-  cat_col("BIDS Keys: ", keys_str, col_fn = crayon::yellow)
+  cat_col("BIDS Keys: ", keys_str, col_fn = if (has_crayon) crayon::yellow else NULL)
 
   cat("Path: ", x$path, "\n") # Display the path (mock or stub)
 
@@ -958,8 +1046,11 @@ print.mock_bids_project <- function(x, ...) {
 #' Note: Returns IDs *without* the "sub-" prefix for consistency with `bids_project` methods.
 #'
 #' @param x A `mock_bids_project` object.
+#' @param as_tibble If `TRUE`, return a tibble with participant metadata instead
+#'   of a character vector.
 #' @param ... Extra arguments (ignored).
 #' @return Character vector of unique participant IDs (e.g., c("01", "02")), sorted.
+#'   If `as_tibble = TRUE`, a tibble with participant metadata.
 #' @export
 #' @examples
 #' # Create a mock project
@@ -969,12 +1060,18 @@ print.mock_bids_project <- function(x, ...) {
 #'
 #' # Get participant IDs
 #' participants(mock_proj)
-participants.mock_bids_project <- function(x, ...) {
-  # Ensure participant_id is character, remove "sub-" prefix if present for consistency
+participants.mock_bids_project <- function(x, as_tibble = FALSE, ...) {
   ids <- as.character(x$part_df$participant_id)
   ids <- stringr::str_remove(ids, "^sub-")
-  # Return sorted unique IDs
-  return(sort(unique(ids)))
+
+  if (isTRUE(as_tibble)) {
+    tbl <- tibble::as_tibble(x$part_df)
+    tbl$participant_id <- ids
+    tbl$source <- "table"
+    return(dplyr::arrange(tbl, participant_id))
+  }
+
+  sort(unique(ids))
 }
 
 
@@ -1064,24 +1161,44 @@ tasks.mock_bids_project <- function(x, ...) {
 search_files.mock_bids_project <- function(x, regex = ".*", full_path = FALSE, strict = TRUE, ...) {
   # Extract fmriprep parameter if provided
   dots <- list(...)
+
+  # Handle formulas in positional argument slots (regex, full_path, strict)
+  if (inherits(strict, "formula")) {
+    dots <- c(list(strict), dots)
+    strict <- TRUE
+  }
+  if (inherits(full_path, "formula")) {
+    dots <- c(list(full_path), dots)
+    full_path <- FALSE
+  }
+  if (inherits(regex, "formula")) {
+    dots <- c(list(regex), dots)
+    regex <- ".*"
+  }
+
+  # Split formula filters from string filters
+  split_f <- .bidser_split_filters(dots)
+  formula_matcher <- .bidser_formula_matcher(split_f$formula_filters, envir = parent.frame())
+  dots <- split_f$string_filters
+
   fmriprep_filter <- NULL
-  
+
   # Handle parameter name conversion
   # Map 'sub' to 'subid' and vice versa to handle inconsistencies in storage vs search
   # Only duplicate if not already present to avoid confusion
-  if("subid" %in% names(dots) && !("sub" %in% names(dots))) { 
+  if("subid" %in% names(dots) && !("sub" %in% names(dots))) {
     dots$sub <- dots$subid  # When user passes subid, also check sub
   } else if("sub" %in% names(dots) && !("subid" %in% names(dots))) {
     dots$subid <- dots$sub  # When user passes sub, also check subid
   }
-  
+
   # Use `ses` for consistency if provided as `session`
-  if("session" %in% names(dots) && !("ses" %in% names(dots))) { 
-    dots$ses <- dots$session 
+  if("session" %in% names(dots) && !("ses" %in% names(dots))) {
+    dots$ses <- dots$session
   }
   # Also ensure 'session' exists if 'ses' is provided
-  if("ses" %in% names(dots) && !("session" %in% names(dots))) { 
-    dots$session <- dots$ses 
+  if("ses" %in% names(dots) && !("session" %in% names(dots))) {
+    dots$session <- dots$ses
   }
 
   if ("fmriprep" %in% names(dots)) {
@@ -1136,6 +1253,11 @@ search_files.mock_bids_project <- function(x, regex = ".*", full_path = FALSE, s
     # Regular entity filtering using mock_key_match
     if (!mock_key_match(node_attrs = node, filters = dots, default = !strict)) {
       # Debugging for specific node failures can go here if needed, carefully accessing variables
+      return(FALSE)
+    }
+
+    # Formula-based entity filters
+    if (!formula_matcher(node)) {
       return(FALSE)
     }
 
@@ -1329,13 +1451,7 @@ read_events.mock_bids_project <- function(x, subid = ".*", task = ".*", run = ".
   if (is.null(relative_event_paths) || length(relative_event_paths) == 0) {
     # inform is noisy, return empty tibble quietly unless verbose option added
     # rlang::inform("No matching event files found in the mock project.")
-    return(tibble::tibble(
-        .subid = character(),
-        .task = character(),
-        .run = character(),
-        .session = character(),
-        data = list()
-        ))
+    return(.bidser_event_empty_result())
   }
 
   all_event_data <- list()
@@ -1396,10 +1512,7 @@ read_events.mock_bids_project <- function(x, subid = ".*", task = ".*", run = ".
   if (length(all_event_data) == 0) {
      # inform is noisy
      # rlang::inform("No event data could be loaded for the matching files.")
-     return(tibble::tibble(
-         .subid = character(), .task = character(), .run = character(),
-         .session = character(), data = list()
-       ))
+     return(.bidser_event_empty_result())
   }
 
   # Combine all data frames
@@ -1436,15 +1549,16 @@ read_events.mock_bids_project <- function(x, subid = ".*", task = ".*", run = ".
                if(col=="data") nested_df[[col]] <- list() else nested_df[[col]] <- NA_character_
            }
        }
-       # Reorder columns
+      # Reorder columns
        nested_df <- nested_df %>% dplyr::select(dplyr::all_of(std_cols))
+       nested_df <- .bidser_add_event_metadata_aliases(nested_df)
 
   } else {
        rlang::warn("Could not determine grouping variables for nesting event data.")
        nested_df <- tibble::tibble(data = list(final_df)) # Fallback
   }
 
-  return(nested_df)
+  .bidser_add_event_metadata_aliases(nested_df)
 }
 
 
@@ -1518,6 +1632,12 @@ confound_files.mock_bids_project <- function(x, subid = ".*", task = ".*", sessi
 #' @param npcs PCA components (applied when requested).
 #' @param perc_var PCA variance (applied when requested).
 #' @param nest If `TRUE`, returns a nested tibble keyed by subject, task, session and run.
+#' @param clean Character vector controlling run-level confound cleaning before
+#'   returning data or running PCA. Supported values are `"none"`,
+#'   `"zero_variance"`, and `"rank"`.
+#' @param na_action How to handle missing values in raw confound columns before
+#'   returning them. Supported values are `"leave"` (default), `"zero"`, and
+#'   `"median"`. PCA-reduced confounds already use median imputation internally.
 #' @param ... Additional BIDS entities (passed to `search_files`).
 #' @return A `bids_confounds` tibble of confound data (nested if `nest = TRUE`).
 #' @examples
@@ -1539,24 +1659,34 @@ confound_files.mock_bids_project <- function(x, subid = ".*", task = ".*", sessi
 #' @rdname read_confounds-method
 #' @export
 read_confounds.mock_bids_project <- function(x, subid = ".*", task = ".*", session = ".*", run = ".*",
-                                             cvars = NULL, npcs = -1, perc_var = -1, nest = TRUE, ...) {
+                                             cvars = NULL, npcs = -1, perc_var = -1,
+                                             nest = TRUE, clean = "zero_variance",
+                                             na_action = "leave", ...) {
+  clean <- .normalize_confound_clean(clean)
+  na_action <- .normalize_confound_na_action(na_action)
+  selection <- paste0(
+    "subid=", shQuote(subid),
+    ", task=", shQuote(task),
+    ", session=", shQuote(session),
+    ", run=", shQuote(run)
+  )
 
   conf_paths <- confound_files.mock_bids_project(x, subid = subid, task = task,
                                                  session = session, run = run,
                                                  full_path = FALSE, ...)
 
   if (is.null(conf_paths) || length(conf_paths) == 0) {
-    out <- tibble::tibble(
-      .subid = character(), .task = character(), .run = character(),
-      .session = character(), data = list()
+    rlang::abort(
+      paste0(
+        "read_confounds() found no confound files matching the requested filters. ",
+        "Selection: ", selection, "."
+      )
     )
-    class(out) <- c("bids_confounds", class(out))
-    attr(out, "pca") <- NULL
-    return(out)
   }
 
   all_conf <- list()
   all_pca <- list()
+  all_diagnostics <- list()
   for (rel_path in conf_paths) {
     if (rel_path %in% names(x$confound_data_store)) {
       conf_df <- x$confound_data_store[[rel_path]]
@@ -1588,9 +1718,20 @@ read_confounds.mock_bids_project <- function(x, subid = ".*", task = ".*", sessi
     }
 
     pca_row <- NULL
+    diag_id <- list(
+      participant_id = meta$.subid,
+      task = meta$.task,
+      run = meta$.run,
+      session = meta$.session,
+      source = rel_path
+    )
+    cleaned <- .clean_confound_frame(conf_df, clean, id = diag_id, role = "confound")
+    conf_df <- cleaned$data
+    pca_reduced <- FALSE
     if ((npcs > 0 || perc_var > 0) && ncol(conf_df) > 1) {
       proc <- process_confounds(conf_df, npcs=npcs, perc_var=perc_var, return_pca=TRUE)
       conf_df <- proc$scores
+      pca_reduced <- TRUE
       if (!is.null(proc$pca)) {
         pca_row <- tibble::tibble(
           .subid = meta$.subid,
@@ -1602,9 +1743,13 @@ read_confounds.mock_bids_project <- function(x, subid = ".*", task = ".*", sessi
         )
       }
     }
+    if (!pca_reduced) {
+      conf_df <- .apply_confound_na_action(conf_df, na_action)
+    }
 
     combined_df <- dplyr::bind_cols(tibble::as_tibble(meta), tibble::as_tibble(conf_df))
     all_conf[[rel_path]] <- combined_df
+    all_diagnostics[[rel_path]] <- cleaned$diagnostics
     if (!is.null(pca_row)) {
       all_pca[[rel_path]] <- pca_row
     }
@@ -1612,10 +1757,26 @@ read_confounds.mock_bids_project <- function(x, subid = ".*", task = ".*", sessi
 
   final_df <- dplyr::bind_rows(all_conf)
   pca_meta <- if (length(all_pca) > 0) dplyr::bind_rows(all_pca) else NULL
+  confound_diagnostics <- if (length(all_diagnostics) > 0) {
+    dplyr::bind_rows(all_diagnostics)
+  } else {
+    .empty_confound_diagnostics()
+  }
+
+  if (nrow(final_df) == 0) {
+    rlang::abort(
+      paste0(
+        "read_confounds() found matching confound files, but none produced usable confound data. ",
+        "Selection: ", selection, "."
+      )
+    )
+  }
 
   if (!nest) {
     class(final_df) <- c("bids_confounds", class(final_df))
     attr(final_df, "pca") <- pca_meta
+    attr(final_df, "confound_diagnostics") <- confound_diagnostics
+    .inform_confound_diagnostics(confound_diagnostics)
     return(final_df)
   }
 
@@ -1623,6 +1784,8 @@ read_confounds.mock_bids_project <- function(x, subid = ".*", task = ".*", sessi
   out <- final_df %>% dplyr::group_by(!!!rlang::syms(grouping_vars)) %>% tidyr::nest()
   class(out) <- c("bids_confounds", class(out))
   attr(out, "pca") <- pca_meta
+  attr(out, "confound_diagnostics") <- confound_diagnostics
+  .inform_confound_diagnostics(confound_diagnostics)
   out
 }
 

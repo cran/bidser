@@ -1,0 +1,1638 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+
+
+<title>Working with Confounds and Variables</title>
+
+<script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
+// be compatible with the behavior of Pandoc < 2.8).
+document.addEventListener('DOMContentLoaded', function(e) {
+  var hs = document.querySelectorAll("div.section[class*='level'] > :first-child");
+  var i, h, a;
+  for (i = 0; i < hs.length; i++) {
+    h = hs[i];
+    if (!/^h[1-6]$/i.test(h.tagName)) continue;  // it should be a header h1-h6
+    a = h.attributes;
+    while (a.length > 0) h.removeAttribute(a[0].name);
+  }
+});
+</script>
+
+<style type="text/css">
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+span.underline{text-decoration: underline;}
+div.column{display: inline-block; vertical-align: top; width: 50%;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+</style>
+
+
+
+<style type="text/css">
+code {
+white-space: pre;
+}
+.sourceCode {
+overflow: visible;
+}
+</style>
+<style type="text/css" data-origin="pandoc">
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+{ counter-reset: source-line 0; }
+pre.numberSource code > span
+{ position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+{ content: counter(source-line);
+position: relative; left: -1em; text-align: right; vertical-align: baseline;
+border: none; display: inline-block;
+-webkit-touch-callout: none; -webkit-user-select: none;
+-khtml-user-select: none; -moz-user-select: none;
+-ms-user-select: none; user-select: none;
+padding: 0 4px; width: 4em;
+color: #aaaaaa;
+}
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa; padding-left: 4px; }
+div.sourceCode
+{ }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } 
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.at { color: #7d9029; } 
+code span.bn { color: #40a070; } 
+code span.bu { color: #008000; } 
+code span.cf { color: #007020; font-weight: bold; } 
+code span.ch { color: #4070a0; } 
+code span.cn { color: #880000; } 
+code span.co { color: #60a0b0; font-style: italic; } 
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.do { color: #ba2121; font-style: italic; } 
+code span.dt { color: #902000; } 
+code span.dv { color: #40a070; } 
+code span.er { color: #ff0000; font-weight: bold; } 
+code span.ex { } 
+code span.fl { color: #40a070; } 
+code span.fu { color: #06287e; } 
+code span.im { color: #008000; font-weight: bold; } 
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.kw { color: #007020; font-weight: bold; } 
+code span.op { color: #666666; } 
+code span.ot { color: #007020; } 
+code span.pp { color: #bc7a00; } 
+code span.sc { color: #4070a0; } 
+code span.ss { color: #bb6688; } 
+code span.st { color: #4070a0; } 
+code span.va { color: #19177c; } 
+code span.vs { color: #4070a0; } 
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } 
+</style>
+<script>
+// apply pandoc div.sourceCode style to pre.sourceCode instead
+(function() {
+  var sheets = document.styleSheets;
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].ownerNode.dataset["origin"] !== "pandoc") continue;
+    try { var rules = sheets[i].cssRules; } catch (e) { continue; }
+    var j = 0;
+    while (j < rules.length) {
+      var rule = rules[j];
+      // check if there is a div.sourceCode rule
+      if (rule.type !== rule.STYLE_RULE || rule.selectorText !== "div.sourceCode") {
+        j++;
+        continue;
+      }
+      var style = rule.style.cssText;
+      // check if color or background-color is set
+      if (rule.style.color === '' && rule.style.backgroundColor === '') {
+        j++;
+        continue;
+      }
+      // replace div.sourceCode by a pre.sourceCode rule
+      sheets[i].deleteRule(j);
+      sheets[i].insertRule('pre.sourceCode{' + style + '}', j);
+    }
+  }
+})();
+</script>
+
+
+
+
+<style type="text/css">
+:root {
+--ink: #17181a;
+--bg: #f3f5f7;
+--surface: #ffffff;
+--surface-strong: #f7f9fb;
+--muted: #636b76;
+--border: #d5dae1;
+--code-bg: #ecf0f4;
+--shadow-soft: 0 1px 3px rgba(9, 11, 15, 0.045);
+--shadow-card: 0 1px 5px rgba(9, 11, 15, 0.055);
+--content: 78ch;
+--anchor-offset: 76px;
+--font-body: "Avenir Next", "Gill Sans", "Trebuchet MS", system-ui, -apple-system, sans-serif;
+--font-display: "Avenir Next", "Gill Sans", "Century Gothic", "Trebuchet MS", system-ui, sans-serif;
+--font-mono: "Iosevka Term", "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+--heading-weight: 730;
+--module: 4px;
+--space-1: 0.25rem;
+--space-2: 0.5rem;
+--space-3: 0.75rem;
+--space-4: 1rem;
+--space-5: 1.5rem;
+--space-6: 2rem;
+--rule-thin: 1px;
+--rule-strong: 2px;
+--ribbon-opacity: 0.62;
+--nav-dash-weight: 650;
+--dash-weight: 600;
+--dash-opacity: 0.82;
+--subdash-opacity: 0.76;
+--overview-dash-weight: 620;
+--overview-dash-opacity: 0.86;
+--hr-opacity: 0.42;
+--table-divider-alpha: 72%;
+--table-hover-alpha: 70%;
+
+--A900: #c22b23;
+--A700: #dc3925;
+--A500: #e44926;
+--A300: #e35b2d;
+--accent-ink-light: var(--A900);
+--accent-ink-dark: var(--A300);
+--accent-ink: var(--accent-ink-light);
+--accent: var(--A500);
+--accent-strong: var(--A700);
+--accent-hover: #a9351f;
+--accent-tint: rgba(228, 73, 38, 0.09);
+--accent-band: rgba(228, 73, 38, 0.14);
+}
+
+
+.style-minimal {
+--rule-strong: 1px;
+--ribbon-opacity: 0.46;
+--nav-dash-weight: 600;
+--dash-weight: 560;
+--dash-opacity: 0.7;
+--subdash-opacity: 0.64;
+--overview-dash-weight: 560;
+--overview-dash-opacity: 0.74;
+--hr-opacity: 0.3;
+--table-divider-alpha: 58%;
+--table-hover-alpha: 52%;
+}
+.style-assertive {
+--rule-strong: 3px;
+--ribbon-opacity: 0.82;
+--nav-dash-weight: 720;
+--dash-weight: 700;
+--dash-opacity: 0.96;
+--subdash-opacity: 0.9;
+--overview-dash-weight: 680;
+--overview-dash-opacity: 0.94;
+--hr-opacity: 0.62;
+--table-divider-alpha: 90%;
+--table-hover-alpha: 92%;
+}
+
+
+.palette-red {
+--A900: #C22B23;
+--A700: #DC3925;
+--A500: #E44926;
+--A300: #E35B2D;
+--accent-hover: #A9351F;
+--accent-tint: rgba(228, 73, 38, 0.09);
+--accent-band: rgba(228, 73, 38, 0.14);
+}
+.palette-lapis {
+--A900: #1B2A74;
+--A700: #20399C;
+--A500: #2C4FCC;
+--A300: #4968D6;
+--accent-hover: #1A377F;
+--accent-tint: rgba(44, 79, 204, 0.10);
+--accent-band: rgba(44, 79, 204, 0.15);
+}
+.palette-ochre {
+--A900: #6F5200;
+--A700: #8B6700;
+--A500: #B48900;
+--A300: #D7A700;
+--accent-hover: #7A5C00;
+--accent-tint: rgba(180, 137, 0, 0.10);
+--accent-band: rgba(180, 137, 0, 0.16);
+}
+.palette-teal {
+--A900: #0D4A4A;
+--A700: #0F5E5E;
+--A500: #127373;
+--A300: #2F8C8C;
+--accent-hover: #0F6060;
+--accent-tint: rgba(18, 115, 115, 0.10);
+--accent-band: rgba(18, 115, 115, 0.15);
+}
+.palette-green {
+--A900: #1B5E20;
+--A700: #2E7D32;
+--A500: #388E3C;
+--A300: #66BB6A;
+--accent-hover: #2E7D32;
+--accent-tint: rgba(56, 142, 60, 0.10);
+--accent-band: rgba(56, 142, 60, 0.15);
+}
+.palette-violet {
+--A900: #4A148C;
+--A700: #6A1B9A;
+--A500: #8E24AA;
+--A300: #BA68C8;
+--accent-ink-dark: #D59AE7;
+--accent-hover: #71208D;
+--accent-tint: rgba(142, 36, 170, 0.11);
+--accent-band: rgba(142, 36, 170, 0.16);
+}
+
+
+
+
+.preset-study {
+--bg: #f7f9fb;
+--surface: #ffffff;
+--surface-strong: #fbfcfd;
+--ink: #17181a;
+--muted: #68717d;
+--border: #dde2e8;
+--code-bg: #f1f4f8;
+--font-display: "Avenir Next", "Gill Sans", "Trebuchet MS", system-ui, sans-serif;
+--heading-weight: 730;
+}
+
+.preset-structural {
+--bg: #e6e9ed;
+--surface: #f1f3f6;
+--surface-strong: #eceff2;
+--ink: #101214;
+--muted: #4b5360;
+--border: #c1c8d0;
+--code-bg: #e0e5ea;
+--shadow-soft: none;
+--shadow-card: none;
+--font-display: "Franklin Gothic Medium", "Avenir Next", "Gill Sans", sans-serif;
+--heading-weight: 760;
+}
+
+.preset-adobe {
+--bg: #ece9e7;
+--surface: #f3f1ef;
+--surface-strong: #efedeb;
+--ink: #1f1c19;
+--muted: #66615d;
+--border: #ccc7c3;
+--code-bg: #e3dfdc;
+--shadow-soft: 0 2px 7px rgba(0, 0, 0, 0.04);
+--shadow-card: 0 2px 9px rgba(0, 0, 0, 0.05);
+--font-display: "Optima", "Avenir Next", "Gill Sans", sans-serif;
+--heading-weight: 720;
+}
+
+.preset-midnight {
+--bg: #0d1117;
+--surface: #151b24;
+--surface-strong: #1a212d;
+--ink: #e8e6e1;
+--muted: #b2bac7;
+--border: #2c3342;
+--code-bg: #0f1520;
+--shadow-soft: 0 6px 20px rgba(0, 0, 0, 0.4);
+--shadow-card: 0 6px 24px rgba(0, 0, 0, 0.45);
+--font-display: "Avenir Next", "Gill Sans", "Trebuchet MS", sans-serif;
+--heading-weight: 740;
+--accent-ink: var(--accent-ink-dark);
+}
+
+
+@media (prefers-color-scheme: dark) {
+:root {
+--ink: #ece8de;
+--bg: #111315;
+--surface: #171a1e;
+--surface-strong: #1c2025;
+--muted: #a7aeb8;
+--border: #313844;
+--code-bg: #181d24;
+--shadow-soft: 0 6px 20px rgba(0, 0, 0, 0.35);
+--shadow-card: 0 6px 24px rgba(0, 0, 0, 0.4);
+--accent-ink: var(--accent-ink-dark);
+--accent-hover: #f2b2a7;
+--accent-tint: rgba(228, 73, 38, 0.2);
+--accent-band: rgba(228, 73, 38, 0.25);
+}
+}
+[data-bs-theme="dark"] {
+--ink: #ece8de;
+--bg: #111315;
+--surface: #171a1e;
+--surface-strong: #1c2025;
+--muted: #a7aeb8;
+--border: #313844;
+--code-bg: #181d24;
+--shadow-soft: 0 6px 20px rgba(0, 0, 0, 0.35);
+--shadow-card: 0 6px 24px rgba(0, 0, 0, 0.4);
+--accent-ink: var(--accent-ink-dark);
+--accent-hover: #f2b2a7;
+--accent-tint: rgba(228, 73, 38, 0.2);
+--accent-band: rgba(228, 73, 38, 0.25);
+}
+
+body[data-bs-theme="dark"].palette-red,
+[data-bs-theme="dark"] body.palette-red {
+--accent-ink: #FFB8A9;
+--accent-hover: #FFD2C7;
+--accent-tint: rgba(228, 73, 38, 0.24);
+--accent-band: rgba(228, 73, 38, 0.30);
+}
+body[data-bs-theme="dark"].palette-lapis,
+[data-bs-theme="dark"] body.palette-lapis {
+--accent-ink: #AAB9FF;
+--accent-hover: #C6D0FF;
+--accent-tint: rgba(73, 104, 214, 0.24);
+--accent-band: rgba(73, 104, 214, 0.30);
+}
+body[data-bs-theme="dark"].palette-ochre,
+[data-bs-theme="dark"] body.palette-ochre {
+--accent-ink: #FFD46E;
+--accent-hover: #FFE4A7;
+--accent-tint: rgba(180, 137, 0, 0.24);
+--accent-band: rgba(180, 137, 0, 0.31);
+}
+body[data-bs-theme="dark"].palette-teal,
+[data-bs-theme="dark"] body.palette-teal {
+--accent-ink: #9BDCD9;
+--accent-hover: #B8E8E5;
+--accent-tint: rgba(47, 140, 140, 0.24);
+--accent-band: rgba(47, 140, 140, 0.30);
+}
+body[data-bs-theme="dark"].palette-green,
+[data-bs-theme="dark"] body.palette-green {
+--accent-ink: #AFE7B1;
+--accent-hover: #CAF0CB;
+--accent-tint: rgba(102, 187, 106, 0.24);
+--accent-band: rgba(102, 187, 106, 0.30);
+}
+body[data-bs-theme="dark"].palette-violet,
+[data-bs-theme="dark"] body.palette-violet {
+--accent-ink: #DFB3EC;
+--accent-hover: #ECCFF4;
+--accent-tint: rgba(186, 104, 200, 0.24);
+--accent-band: rgba(186, 104, 200, 0.31);
+}
+@media (prefers-color-scheme: dark) {
+body.palette-red {
+--accent-ink: #FFB8A9;
+--accent-hover: #FFD2C7;
+--accent-tint: rgba(228, 73, 38, 0.24);
+--accent-band: rgba(228, 73, 38, 0.30);
+}
+body.palette-lapis {
+--accent-ink: #AAB9FF;
+--accent-hover: #C6D0FF;
+--accent-tint: rgba(73, 104, 214, 0.24);
+--accent-band: rgba(73, 104, 214, 0.30);
+}
+body.palette-ochre {
+--accent-ink: #FFD46E;
+--accent-hover: #FFE4A7;
+--accent-tint: rgba(180, 137, 0, 0.24);
+--accent-band: rgba(180, 137, 0, 0.31);
+}
+body.palette-teal {
+--accent-ink: #9BDCD9;
+--accent-hover: #B8E8E5;
+--accent-tint: rgba(47, 140, 140, 0.24);
+--accent-band: rgba(47, 140, 140, 0.30);
+}
+body.palette-green {
+--accent-ink: #AFE7B1;
+--accent-hover: #CAF0CB;
+--accent-tint: rgba(102, 187, 106, 0.24);
+--accent-band: rgba(102, 187, 106, 0.30);
+}
+body.palette-violet {
+--accent-ink: #DFB3EC;
+--accent-hover: #ECCFF4;
+--accent-tint: rgba(186, 104, 200, 0.24);
+--accent-band: rgba(186, 104, 200, 0.31);
+}
+}
+
+
+:root { scrollbar-gutter: stable both-edges; }
+html,
+body {
+background-color: var(--bg);
+color: var(--ink);
+font-family: var(--font-body);
+font-size: 17.5px;
+line-height: 1.58;
+letter-spacing: 0.01em;
+text-rendering: optimizeLegibility;
+-webkit-font-smoothing: antialiased;
+-moz-osx-font-smoothing: grayscale;
+}
+
+.navbar .nav-link,
+.navbar .navbar-brand,
+.nav-item .nav-link,
+.btn,
+.form-control,
+input[type="search"],
+button.copy-code,
+pre,
+table,
+blockquote,
+.callout,
+.theme-lab__panel,
+.theme-lab__preview,
+.albers-chip,
+#toc > .nav a.nav-link,
+aside,
+.dropdown-menu,
+.popover,
+.page-content,
+.article,
+.reference,
+.template-home,
+.page-header {
+border-radius: 0 !important;
+}
+main,
+.content,
+.page-content,
+.vignette,
+.contents {
+max-width: var(--content);
+margin-inline: auto;
+padding-inline: clamp(16px, 2.4vw, 34px);
+}
+
+.page-content,
+.article,
+.reference,
+.template-home {
+position: relative;
+background: var(--surface);
+border: var(--rule-thin) solid var(--border);
+box-shadow: var(--shadow-soft);
+}
+.page-content::before,
+.article::before,
+.reference::before,
+.template-home::before {
+content: "";
+position: absolute;
+top: calc(-1 * var(--rule-thin));
+bottom: calc(-1 * var(--rule-thin));
+left: calc(-1 * var(--rule-thin));
+width: var(--rule-strong);
+background: var(--A500);
+opacity: var(--ribbon-opacity);
+pointer-events: none;
+}
+.page-header,
+.template-home .page-header {
+background: var(--surface-strong);
+border-top: var(--rule-thin) solid var(--border);
+border-bottom: var(--rule-thin) solid var(--border);
+}
+.navbar {
+background: var(--surface-strong) !important;
+border-top: var(--rule-strong) solid var(--A500);
+border-bottom: var(--rule-thin) solid var(--border);
+backdrop-filter: none;
+box-shadow: none;
+}
+.navbar .navbar-brand,
+.navbar .nav-link {
+color: var(--ink) !important;
+font-weight: 650;
+letter-spacing: 0.045em;
+text-transform: uppercase;
+font-size: 0.85em;
+text-decoration: none !important;
+}
+.navbar .navbar-brand {
+font-weight: 730;
+letter-spacing: 0.055em;
+}
+.navbar .nav-link {
+border-bottom: var(--rule-thin) solid transparent;
+padding-bottom: 0.18rem;
+}
+.navbar .nav-link:hover,
+.navbar .nav-link:focus-visible {
+border-bottom-color: var(--A500);
+}
+.navbar .nav-link.active,
+.navbar .active > a {
+border-bottom-color: var(--A500);
+}
+.navbar .nav-link.active::after,
+.navbar .active > a::after {
+content: " —";
+margin-left: var(--space-1);
+color: var(--A500);
+font-weight: var(--nav-dash-weight);
+}
+.sidebar,
+.toc {
+background: var(--surface);
+border: var(--rule-thin) solid var(--border);
+}
+
+p { margin-block: 0 1.02rem; }
+h1,
+h2,
+h3 {
+font-family: var(--font-display);
+color: var(--ink);
+line-height: 1.18;
+margin-top: var(--space-6);
+margin-bottom: 0.65rem;
+}
+h1 {
+font-size: clamp(2rem, 2.6vw, 2.42rem);
+letter-spacing: 0.008em;
+text-wrap: balance;
+font-weight: calc(var(--heading-weight) + 35);
+}
+h2 {
+font-size: clamp(1.34rem, 2vw, 1.58rem);
+letter-spacing: 0.075em;
+text-transform: uppercase;
+font-weight: var(--heading-weight);
+}
+h3 {
+font-size: clamp(1.08rem, 1.5vw, 1.24rem);
+letter-spacing: 0.04em;
+font-weight: calc(var(--heading-weight) - 40);
+text-transform: uppercase;
+}
+h2,
+h3 {
+position: relative;
+padding-left: 0.82em;
+padding-right: 1.45em;
+scroll-margin-top: var(--anchor-offset);
+}
+h2::before,
+h3::before {
+content: "—";
+position: absolute;
+left: 0;
+top: 0.02em;
+color: var(--A500);
+line-height: 1;
+font-weight: var(--dash-weight);
+opacity: var(--dash-opacity);
+}
+h3::before {
+content: "–";
+color: var(--A700);
+opacity: var(--subdash-opacity);
+}
+
+a,
+a:visited {
+color: var(--accent-ink) !important;
+text-decoration: underline;
+text-decoration-thickness: 0.09em;
+text-underline-offset: 0.14em;
+text-decoration-skip-ink: auto;
+transition: color 0.15s ease;
+}
+a:hover {
+color: var(--accent-hover) !important;
+}
+a:focus-visible,
+button.copy-code:focus-visible,
+.anchor:focus-visible {
+outline: 2px solid var(--accent-ink);
+outline-offset: 2px;
+box-shadow: 0 0 0 3px var(--accent-tint);
+}
+a:focus { outline: none; }
+
+code,
+pre,
+kbd,
+samp {
+font-family: var(--font-mono);
+font-size: 0.95em;
+line-height: 1.52;
+}
+pre {
+background: var(--code-bg);
+border: var(--rule-thin) solid var(--border);
+border-left: var(--rule-strong) solid var(--A500);
+box-shadow: none;
+padding: var(--space-5) var(--space-4);
+margin-block: 1.35rem;
+overflow: auto;
+position: relative;
+tab-size: 2;
+-moz-tab-size: 2;
+}
+
+pre,
+.sourceCode pre {
+color: var(--ink);
+}
+[data-bs-theme="dark"] pre,
+[data-bs-theme="dark"] code {
+background-color: var(--code-bg);
+}
+pre code {
+background: transparent;
+border: none;
+padding: 0;
+word-break: normal;
+overflow-wrap: normal;
+color: var(--ink);
+}
+button.copy-code {
+position: absolute;
+top: 8px;
+right: 8px;
+border: var(--rule-thin) solid var(--A500);
+background: var(--surface);
+color: var(--accent-ink);
+padding: 4px 8px;
+font: 650 11px/1 var(--font-display);
+letter-spacing: 0.06em;
+text-transform: uppercase;
+cursor: pointer;
+}
+button.copy-code:hover {
+background: var(--accent-tint);
+}
+button.copy-code:active {
+transform: translateY(1px);
+}
+p code {
+background: var(--code-bg);
+border: var(--rule-thin) solid var(--border);
+padding: 0.12em 0.36em;
+}
+
+.sourceCode .va,
+.sourceCode .op,
+.sourceCode .pp,
+.sourceCode .ot,
+.sourceCode .sc {
+color: var(--ink);
+}
+pre code .kw,
+.sourceCode .kw,
+.hljs-keyword {
+color: var(--A900);
+font-weight: 650;
+}
+pre code .fu,
+.sourceCode .fu,
+.hljs-title,
+.hljs-function {
+color: var(--A700);
+}
+pre code .st,
+.sourceCode .st,
+.hljs-string {
+color: color-mix(in srgb, var(--A500) 68%, var(--ink));
+}
+pre code .co,
+.sourceCode .co,
+.hljs-comment {
+color: var(--muted);
+font-style: italic;
+}
+pre code .cn,
+.sourceCode .cn,
+.hljs-number,
+.hljs-literal {
+color: color-mix(in srgb, var(--A300) 64%, var(--ink));
+}
+
+table {
+width: 100%;
+border-collapse: collapse;
+font-variant-numeric: tabular-nums;
+border: var(--rule-thin) solid var(--border);
+}
+th,
+td {
+border-bottom: var(--rule-thin) solid var(--border);
+padding: 10px 9px;
+}
+th + th,
+td + td {
+border-left: var(--rule-thin) solid color-mix(in srgb, var(--border) var(--table-divider-alpha), transparent);
+}
+thead th {
+background: var(--surface-strong);
+border-bottom: var(--rule-strong) solid var(--A500);
+font-weight: 700;
+text-transform: uppercase;
+font-size: 0.84em;
+letter-spacing: 0.06em;
+text-align: left;
+}
+tbody tr:nth-child(odd) {
+background: var(--accent-tint);
+}
+tbody tr:hover {
+background: color-mix(in srgb, var(--accent-band) var(--table-hover-alpha), transparent);
+}
+caption {
+caption-side: bottom;
+color: var(--muted);
+padding-top: 0.7rem;
+font-size: 0.94em;
+}
+
+figure {
+margin-block: 1.2rem 1.6rem;
+padding: 0.78rem 0.82rem;
+border: var(--rule-thin) solid var(--border);
+background: var(--surface);
+}
+figure::before {
+content: "";
+display: block;
+height: var(--rule-strong);
+width: clamp(64px, 18%, 160px);
+background: var(--A500);
+opacity: 0.58;
+margin-bottom: 0.68rem;
+}
+figcaption {
+margin-top: 0.58rem;
+font-size: 0.82rem;
+text-transform: uppercase;
+letter-spacing: 0.052em;
+color: var(--muted);
+}
+
+blockquote,
+.callout {
+border-left: var(--rule-strong) solid var(--A500);
+border-top: var(--rule-thin) solid var(--border);
+background: var(--accent-band);
+padding: 16px 22px;
+margin-block: 1.45rem;
+}
+blockquote p { margin: 0; }
+.callout-note {
+border-left-color: var(--A500);
+background: var(--accent-band);
+}
+.callout-insight {
+border-left-color: var(--A700);
+background: var(--accent-tint);
+}
+.callout-warning {
+border-left-color: #b48900;
+background: rgba(180, 137, 0, 0.12);
+}
+.callout-experiment {
+border-left-color: color-mix(in srgb, var(--A500) 60%, var(--A900));
+background:
+linear-gradient(90deg, color-mix(in srgb, var(--A300) 22%, transparent) 0 2px, transparent 2px),
+color-mix(in srgb, var(--accent-band) 75%, var(--surface));
+}
+
+h2:hover .anchor,
+h3:hover .anchor,
+h2:focus-within .anchor,
+h3:focus-within .anchor {
+opacity: 1;
+transform: translateY(-50%) translateX(0);
+}
+.anchor {
+opacity: 0;
+position: absolute;
+right: 0;
+top: 50%;
+transform: translateY(-50%) translateX(0.2em);
+text-decoration: none;
+color: var(--A500);
+line-height: 1;
+font-weight: 700;
+letter-spacing: 0.04em;
+transition: opacity 0.15s ease-in-out, transform 0.15s ease-in-out;
+}
+
+.homage-hero {
+aspect-ratio: 8 / 3;
+min-height: clamp(72px, 14vw, 168px);
+margin-block: 1.5rem;
+border: 0;
+border-radius: 0;
+box-shadow: none;
+background:
+linear-gradient(90deg, var(--A900) 0 25%, transparent 25% 100%),
+linear-gradient(90deg, transparent 0 25%, var(--A700) 25% 50%, transparent 50% 100%),
+linear-gradient(90deg, transparent 0 50%, var(--A500) 50% 75%, transparent 75% 100%),
+linear-gradient(90deg, transparent 0 75%, var(--A300) 75% 100%),
+var(--surface);
+}
+.homage-hero--letterbox {
+aspect-ratio: 12 / 1;
+margin-block: 1rem 0.55rem;
+}
+
+.albers-plate {
+position: relative;
+width: min(100%, 560px);
+aspect-ratio: 1 / 1;
+margin: calc(var(--module) * 7) 0 calc(var(--module) * 8);
+border: var(--rule-thin) solid var(--border);
+background: var(--surface);
+overflow: hidden;
+}
+.albers-plate__outer,
+.albers-plate__inner,
+.albers-plate__core {
+position: absolute;
+box-sizing: border-box;
+}
+.albers-plate__outer {
+width: 72%;
+aspect-ratio: 1 / 1;
+left: 50%;
+top: 50%;
+transform: translate(-50%, -50%);
+background: var(--A300);
+}
+.albers-plate__inner {
+width: 50%;
+aspect-ratio: 1 / 1;
+left: 50%;
+top: 50%;
+transform: translate(-50%, -50%);
+background: var(--A700);
+}
+.albers-plate__core {
+width: 28%;
+aspect-ratio: 1 / 1;
+left: 50%;
+top: 50%;
+transform: translate(-50%, -50%);
+background: var(--A900);
+}
+.albers-composition {
+position: relative;
+width: 100%;
+aspect-ratio: 16 / 5;
+min-height: clamp(96px, 18vw, 214px);
+background: var(--surface);
+border: var(--rule-thin) solid var(--border);
+margin-block: 1.2rem 1.5rem;
+overflow: hidden;
+}
+.albers-composition svg {
+width: 100%;
+height: 100%;
+display: block;
+}
+.albers-composition--dense {
+min-height: clamp(120px, 23vw, 270px);
+}
+.hr-notch {
+height: 0;
+border-top: var(--rule-thin) solid var(--border);
+border-bottom: var(--rule-thin) solid var(--A500);
+margin: 1.5rem 0;
+opacity: var(--hr-opacity);
+}
+.overview ul {
+list-style: none;
+margin: 0;
+padding-left: 0;
+}
+.overview li {
+position: relative;
+padding-left: 1.1em;
+margin-bottom: var(--space-2);
+}
+.overview li::before {
+content: "—";
+position: absolute;
+left: 0;
+top: 0.02em;
+color: var(--A500);
+font-weight: var(--overview-dash-weight);
+opacity: var(--overview-dash-opacity);
+}
+
+.theme-lab {
+display: grid;
+gap: var(--space-4);
+}
+.theme-lab__panel {
+border: var(--rule-thin) solid var(--border);
+background: var(--surface-strong);
+padding: var(--space-4);
+}
+.theme-lab__controls {
+display: grid;
+grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+gap: var(--space-3);
+}
+.theme-lab label {
+display: block;
+font-size: 0.78rem;
+text-transform: uppercase;
+letter-spacing: 0.06em;
+color: var(--muted);
+margin-bottom: var(--space-1);
+}
+.theme-lab select,
+.theme-lab input {
+width: 100%;
+border: var(--rule-thin) solid var(--border);
+background: var(--surface);
+color: var(--ink);
+padding: 0.46rem 0.5rem;
+}
+.theme-lab__preview {
+border: var(--rule-thin) solid var(--border);
+background: var(--surface);
+padding: var(--space-4);
+}
+.theme-lab__chips {
+display: flex;
+flex-wrap: wrap;
+gap: 0.4rem;
+}
+.albers-chip {
+border: var(--rule-thin) solid var(--border);
+background: var(--surface-strong);
+color: var(--ink);
+padding: 0.2rem 0.44rem;
+font-size: 0.74rem;
+text-transform: uppercase;
+letter-spacing: 0.05em;
+}
+body.preset-midnight #toc > .nav a.nav-link {
+color: color-mix(in srgb, var(--ink) 84%, var(--A300));
+}
+body.preset-midnight #toc > .nav a.nav-link:hover,
+body.preset-midnight #toc > .nav a.nav-link:focus {
+background-color: color-mix(in srgb, var(--A300) 24%, transparent);
+}
+body.preset-midnight #toc > .nav a.nav-link.active {
+color: var(--accent-ink);
+background-color: color-mix(in srgb, var(--A300) 30%, var(--surface));
+}
+
+body.preset-midnight img.r-plt,
+body.preset-midnight pre .r-plt.img img,
+body.preset-midnight .cell-output-display img,
+body.preset-midnight .html-widget {
+filter: none !important;
+}
+
+@media (max-width: 920px) {
+html,
+body { font-size: 16.8px; }
+:root { --anchor-offset: 64px; }
+h2,
+h3 {
+padding-left: 0.62em;
+padding-right: 1.2em;
+}
+.page-content,
+.article,
+.reference,
+.template-home {
+box-shadow: none;
+border-left: none;
+border-right: none;
+}
+.page-content::before,
+.article::before,
+.reference::before,
+.template-home::before {
+display: none;
+}
+button.copy-code {
+font-size: 10px;
+letter-spacing: 0.05em;
+}
+}
+@media (max-width: 760px) {
+:root {
+--anchor-offset: 58px;
+--content: 74ch;
+}
+main,
+.content,
+.page-content,
+.vignette,
+.contents {
+padding-inline: 14px;
+}
+.navbar .navbar-brand,
+.navbar .nav-link {
+font-size: 0.78em;
+letter-spacing: 0.035em;
+}
+h1 { font-size: clamp(1.72rem, 7.2vw, 2.02rem); }
+h2 {
+font-size: clamp(1.16rem, 5.2vw, 1.35rem);
+letter-spacing: 0.045em;
+}
+h3 { font-size: clamp(1rem, 4.3vw, 1.14rem); }
+pre {
+padding: var(--space-5) var(--space-3);
+font-size: 0.91em;
+}
+button.copy-code {
+min-height: 30px;
+padding: 6px 10px;
+}
+table {
+display: block;
+overflow-x: auto;
+white-space: nowrap;
+-webkit-overflow-scrolling: touch;
+}
+}
+@media (max-width: 520px) {
+:root { --anchor-offset: 54px; }
+main,
+.content,
+.page-content,
+.vignette,
+.contents {
+padding-inline: 12px;
+}
+.navbar { border-top-width: 2px; }
+.navbar .navbar-brand,
+.navbar .nav-link {
+font-size: 0.74em;
+letter-spacing: 0.03em;
+}
+h2,
+h3 {
+padding-right: 1em;
+}
+.anchor { right: -0.08em; }
+pre {
+border-left-width: 2px;
+padding: var(--space-4) var(--space-3);
+}
+button.copy-code {
+top: 6px;
+right: 6px;
+min-height: 28px;
+padding: 5px 8px;
+font-size: 9px;
+}
+}
+@media (prefers-contrast: more) {
+:root {
+--border: #9aa1ad;
+--muted: #4f5661;
+--accent-tint: rgba(228, 73, 38, 0.18);
+--accent-band: rgba(228, 73, 38, 0.24);
+--rule-strong: 3px;
+}
+a { text-decoration-thickness: 0.12em; }
+pre,
+table,
+blockquote,
+.callout {
+border-width: 2px;
+}
+.navbar .nav-link.active::after,
+.navbar .active > a::after { color: var(--A700); }
+}
+@media (prefers-reduced-motion: reduce) {
+*,
+*::before,
+*::after {
+animation-duration: 0.01ms !important;
+animation-iteration-count: 1 !important;
+transition-duration: 0.01ms !important;
+scroll-behavior: auto !important;
+}
+}
+@media print {
+body { background: #fff !important; }
+.navbar,
+.sidebar,
+.toc,
+.page-header,
+.homage-hero,
+.hr-notch,
+button.copy-code,
+.anchor { display: none !important; }
+.page-content,
+.article,
+.reference,
+.template-home {
+border: none;
+box-shadow: none;
+background: #fff;
+}
+.page-content::before,
+.article::before,
+.reference::before,
+.template-home::before {
+display: none;
+}
+pre { page-break-inside: avoid; }
+a {
+color: inherit !important;
+text-decoration: none;
+}
+}
+</style>
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Working with Confounds and Variables</h1>
+
+
+<div id="TOC">
+<ul>
+<li><a href="#building-a-test-dataset" id="toc-building-a-test-dataset">Building a test dataset</a></li>
+<li><a href="#confound-sets-predefined-recipes" id="toc-confound-sets-predefined-recipes">Confound sets: predefined
+recipes</a></li>
+<li><a href="#reading-confounds" id="toc-reading-confounds">Reading
+confounds</a></li>
+<li><a href="#confound-strategies-pca-reduction" id="toc-confound-strategies-pca-reduction">Confound strategies: PCA
+reduction</a></li>
+<li><a href="#reading-event-files" id="toc-reading-event-files">Reading
+event files</a></li>
+<li><a href="#the-variables-table-one-tibble-per-run" id="toc-the-variables-table-one-tibble-per-run">The variables table: one
+tibble per run</a></li>
+<li><a href="#dataset-qa-with-bids_report" id="toc-dataset-qa-with-bids_report">Dataset QA with
+bids_report()</a></li>
+<li><a href="#putting-it-together" id="toc-putting-it-together">Putting
+it together</a></li>
+<li><a href="#next-steps" id="toc-next-steps">Next steps</a></li>
+</ul>
+</div>
+
+<script>document.addEventListener("DOMContentLoaded",function(){document.body.classList.remove("palette-red","palette-lapis","palette-ochre","palette-teal","palette-green","palette-violet","preset-homage","preset-study","preset-structural","preset-adobe","preset-midnight");document.body.classList.add("palette-red","preset-homage");});</script>
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="fu">library</span>(bidser)</span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a><span class="fu">library</span>(dplyr)</span>
+<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a><span class="fu">library</span>(tidyr)</span>
+<span id="cb1-4"><a href="#cb1-4" tabindex="-1"></a><span class="fu">library</span>(tibble)</span></code></pre></div>
+<p>After loading a BIDS dataset and finding your scans, the next step in
+most fMRI workflows is extracting <strong>confound regressors</strong>
+and <strong>event tables</strong> for modeling. bidser gives you tidy
+tibbles at every level – per-run, per-subject, or dataset-wide – so you
+can go straight from BIDS into <code>lm()</code>, <code>lme4</code>, or
+whatever modeling framework you prefer.</p>
+<div id="building-a-test-dataset" class="section level2">
+<h2>Building a test dataset</h2>
+<p>We’ll create a small mock dataset with two subjects, two tasks, and
+realistic fMRIPrep-style confound files so that every code chunk in this
+vignette runs without network access.</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a>proj <span class="ot">&lt;-</span> <span class="fu">bids_project</span>(temp_dir, <span class="at">fmriprep =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a>proj</span>
+<span id="cb2-3"><a href="#cb2-3" tabindex="-1"></a><span class="co">#&gt; BIDS Project Summary </span></span>
+<span id="cb2-4"><a href="#cb2-4" tabindex="-1"></a><span class="co">#&gt; Project Name:  bids_confounds_vignette_5f09544047a </span></span>
+<span id="cb2-5"><a href="#cb2-5" tabindex="-1"></a><span class="co">#&gt; Participants (n):  2 </span></span>
+<span id="cb2-6"><a href="#cb2-6" tabindex="-1"></a><span class="co">#&gt; Participants Source:  file </span></span>
+<span id="cb2-7"><a href="#cb2-7" tabindex="-1"></a><span class="co">#&gt; Tasks:  nback, rest </span></span>
+<span id="cb2-8"><a href="#cb2-8" tabindex="-1"></a><span class="co">#&gt; fMRIPrep Derivatives:  derivatives/fmriprep </span></span>
+<span id="cb2-9"><a href="#cb2-9" tabindex="-1"></a><span class="co">#&gt; Derivative Pipelines:  fmriprep </span></span>
+<span id="cb2-10"><a href="#cb2-10" tabindex="-1"></a><span class="co">#&gt; Index:  enabled </span></span>
+<span id="cb2-11"><a href="#cb2-11" tabindex="-1"></a><span class="co">#&gt; Image Types:  func, funcprep </span></span>
+<span id="cb2-12"><a href="#cb2-12" tabindex="-1"></a><span class="co">#&gt; Modalities:  (none) </span></span>
+<span id="cb2-13"><a href="#cb2-13" tabindex="-1"></a><span class="co">#&gt; Keys:  folder, kind, relative_path, run, subid, suffix, task, type, desc, space</span></span></code></pre></div>
+<p>Our demo has 2 subjects, each with a resting-state and an n-back task
+run, plus fMRIPrep derivatives containing confound timeseries.</p>
+</div>
+<div id="confound-sets-predefined-recipes" class="section level2">
+<h2>Confound sets: predefined recipes</h2>
+<p>Before reading any files, it helps to know what confound sets bidser
+ships with. These are curated variable lists that match common denoising
+strategies from the fMRI literature.</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a><span class="fu">list_confound_sets</span>()</span>
+<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a><span class="co">#&gt;                 set</span></span>
+<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a><span class="co">#&gt; 1           motion6</span></span>
+<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a><span class="co">#&gt; 2          motion12</span></span>
+<span id="cb3-5"><a href="#cb3-5" tabindex="-1"></a><span class="co">#&gt; 3          motion24</span></span>
+<span id="cb3-6"><a href="#cb3-6" tabindex="-1"></a><span class="co">#&gt; 4           global3</span></span>
+<span id="cb3-7"><a href="#cb3-7" tabindex="-1"></a><span class="co">#&gt; 5                9p</span></span>
+<span id="cb3-8"><a href="#cb3-8" tabindex="-1"></a><span class="co">#&gt; 6               36p</span></span>
+<span id="cb3-9"><a href="#cb3-9" tabindex="-1"></a><span class="co">#&gt; 7          acompcor</span></span>
+<span id="cb3-10"><a href="#cb3-10" tabindex="-1"></a><span class="co">#&gt; 8          tcompcor</span></span>
+<span id="cb3-11"><a href="#cb3-11" tabindex="-1"></a><span class="co">#&gt; 9           compcor</span></span>
+<span id="cb3-12"><a href="#cb3-12" tabindex="-1"></a><span class="co">#&gt; 10           cosine</span></span>
+<span id="cb3-13"><a href="#cb3-13" tabindex="-1"></a><span class="co">#&gt; 11         outliers</span></span>
+<span id="cb3-14"><a href="#cb3-14" tabindex="-1"></a><span class="co">#&gt; 12            dvars</span></span>
+<span id="cb3-15"><a href="#cb3-15" tabindex="-1"></a><span class="co">#&gt; 13        std_dvars</span></span>
+<span id="cb3-16"><a href="#cb3-16" tabindex="-1"></a><span class="co">#&gt; 14        raw_dvars</span></span>
+<span id="cb3-17"><a href="#cb3-17" tabindex="-1"></a><span class="co">#&gt; 15    non_std_dvars</span></span>
+<span id="cb3-18"><a href="#cb3-18" tabindex="-1"></a><span class="co">#&gt; 16 vx_wisestd_dvars</span></span>
+<span id="cb3-19"><a href="#cb3-19" tabindex="-1"></a><span class="co">#&gt; 17               fd</span></span>
+<span id="cb3-20"><a href="#cb3-20" tabindex="-1"></a><span class="co">#&gt; 18   legacy_default</span></span>
+<span id="cb3-21"><a href="#cb3-21" tabindex="-1"></a><span class="co">#&gt;                                                                     description</span></span>
+<span id="cb3-22"><a href="#cb3-22" tabindex="-1"></a><span class="co">#&gt; 1                                                  Rigid-body motion (6 params)</span></span>
+<span id="cb3-23"><a href="#cb3-23" tabindex="-1"></a><span class="co">#&gt; 2                                               Motion + first derivatives (12)</span></span>
+<span id="cb3-24"><a href="#cb3-24" tabindex="-1"></a><span class="co">#&gt; 3                                        Friston 24-parameter motion model (24)</span></span>
+<span id="cb3-25"><a href="#cb3-25" tabindex="-1"></a><span class="co">#&gt; 4                                               CSF, WM, and global signals (3)</span></span>
+<span id="cb3-26"><a href="#cb3-26" tabindex="-1"></a><span class="co">#&gt; 5                      9-parameter model: motion6 + CSF + WM + GlobalSignal (9)</span></span>
+<span id="cb3-27"><a href="#cb3-27" tabindex="-1"></a><span class="co">#&gt; 6            36-parameter model: motion24 + globals with derivs/quadratics (36)</span></span>
+<span id="cb3-28"><a href="#cb3-28" tabindex="-1"></a><span class="co">#&gt; 7                                Anatomical CompCor components (use n to limit)</span></span>
+<span id="cb3-29"><a href="#cb3-29" tabindex="-1"></a><span class="co">#&gt; 8                                  Temporal CompCor components (use n to limit)</span></span>
+<span id="cb3-30"><a href="#cb3-30" tabindex="-1"></a><span class="co">#&gt; 9                         Both anatomical and temporal CompCor (use n to limit)</span></span>
+<span id="cb3-31"><a href="#cb3-31" tabindex="-1"></a><span class="co">#&gt; 10                                             Discrete cosine basis regressors</span></span>
+<span id="cb3-32"><a href="#cb3-32" tabindex="-1"></a><span class="co">#&gt; 11               FD/RMSD, motion spike regressors, and nonsteady-state outliers</span></span>
+<span id="cb3-33"><a href="#cb3-33" tabindex="-1"></a><span class="co">#&gt; 12                                          Standardized DVARS only (std_dvars)</span></span>
+<span id="cb3-34"><a href="#cb3-34" tabindex="-1"></a><span class="co">#&gt; 13                                          Standardized DVARS only (std_dvars)</span></span>
+<span id="cb3-35"><a href="#cb3-35" tabindex="-1"></a><span class="co">#&gt; 14                                           Raw/non-standardized DVARS (dvars)</span></span>
+<span id="cb3-36"><a href="#cb3-36" tabindex="-1"></a><span class="co">#&gt; 15                              Explicit non-standardized DVARS (non_std_dvars)</span></span>
+<span id="cb3-37"><a href="#cb3-37" tabindex="-1"></a><span class="co">#&gt; 16                             Voxel-wise standardized DVARS (vx_wisestd_dvars)</span></span>
+<span id="cb3-38"><a href="#cb3-38" tabindex="-1"></a><span class="co">#&gt; 17                                                  Framewise displacement only</span></span>
+<span id="cb3-39"><a href="#cb3-39" tabindex="-1"></a><span class="co">#&gt; 18 Legacy read_confounds() default = former DEFAULT_CVARS2 (26 canonical names)</span></span></code></pre></div>
+<p>Each set is a named collection of confound variable names. You can
+inspect what a set contains:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="co"># 6 rigid-body motion parameters</span></span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a><span class="fu">confound_set</span>(<span class="st">&quot;motion6&quot;</span>)</span>
+<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a><span class="co">#&gt; [1] &quot;trans_x&quot; &quot;trans_y&quot; &quot;trans_z&quot; &quot;rot_x&quot;   &quot;rot_y&quot;   &quot;rot_z&quot;</span></span>
+<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a></span>
+<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a><span class="co"># Friston 24-parameter expansion (motion + derivatives + squares)</span></span>
+<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a><span class="fu">length</span>(<span class="fu">confound_set</span>(<span class="st">&quot;motion24&quot;</span>))</span>
+<span id="cb4-7"><a href="#cb4-7" tabindex="-1"></a><span class="co">#&gt; [1] 24</span></span></code></pre></div>
+<p>The sets compose naturally – <code>&quot;36p&quot;</code> is
+<code>motion24</code> plus tissue signals and their expansions, while
+<code>&quot;9p&quot;</code> is <code>motion6</code> plus the three global
+signals.</p>
+</div>
+<div id="reading-confounds" class="section level2">
+<h2>Reading confounds</h2>
+<p><code>read_confounds()</code> reads fMRIPrep confound TSV files and
+returns tidy tibbles. Pass a confound set name to select variables:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a>conf_nested <span class="ot">&lt;-</span> <span class="fu">read_confounds</span>(proj, <span class="at">cvars =</span> <span class="fu">confound_set</span>(<span class="st">&quot;motion6&quot;</span>))</span>
+<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a>conf_nested</span>
+<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a><span class="co">#&gt; # A tibble: 4 × 5</span></span>
+<span id="cb5-4"><a href="#cb5-4" tabindex="-1"></a><span class="co">#&gt; # Groups:   participant_id, task, run, session [4]</span></span>
+<span id="cb5-5"><a href="#cb5-5" tabindex="-1"></a><span class="co">#&gt;   participant_id task  run   session data              </span></span>
+<span id="cb5-6"><a href="#cb5-6" tabindex="-1"></a><span class="co">#&gt;   &lt;chr&gt;          &lt;chr&gt; &lt;chr&gt; &lt;chr&gt;   &lt;list&gt;            </span></span>
+<span id="cb5-7"><a href="#cb5-7" tabindex="-1"></a><span class="co">#&gt; 1 01             nback 01    1       &lt;tibble [100 × 6]&gt;</span></span>
+<span id="cb5-8"><a href="#cb5-8" tabindex="-1"></a><span class="co">#&gt; 2 01             rest  01    1       &lt;tibble [100 × 6]&gt;</span></span>
+<span id="cb5-9"><a href="#cb5-9" tabindex="-1"></a><span class="co">#&gt; 3 02             nback 01    1       &lt;tibble [100 × 6]&gt;</span></span>
+<span id="cb5-10"><a href="#cb5-10" tabindex="-1"></a><span class="co">#&gt; 4 02             rest  01    1       &lt;tibble [100 × 6]&gt;</span></span></code></pre></div>
+<p>The result is a nested tibble – one row per run, with the actual
+timeseries tucked inside the <code>data</code> list column. This
+structure makes it easy to iterate over runs in a modeling pipeline:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a>conf_nested <span class="sc">|&gt;</span></span>
+<span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a>  <span class="fu">unnest</span>(data) <span class="sc">|&gt;</span></span>
+<span id="cb6-3"><a href="#cb6-3" tabindex="-1"></a>  <span class="fu">select</span>(participant_id, task, run, trans_x, rot_x) <span class="sc">|&gt;</span></span>
+<span id="cb6-4"><a href="#cb6-4" tabindex="-1"></a>  <span class="fu">head</span>()</span>
+<span id="cb6-5"><a href="#cb6-5" tabindex="-1"></a><span class="co">#&gt; # A tibble: 6 × 6</span></span>
+<span id="cb6-6"><a href="#cb6-6" tabindex="-1"></a><span class="co">#&gt; # Groups:   participant_id, task, run, session [1]</span></span>
+<span id="cb6-7"><a href="#cb6-7" tabindex="-1"></a><span class="co">#&gt;   session participant_id task  run   trans_x   rot_x</span></span>
+<span id="cb6-8"><a href="#cb6-8" tabindex="-1"></a><span class="co">#&gt;   &lt;chr&gt;   &lt;chr&gt;          &lt;chr&gt; &lt;chr&gt;   &lt;dbl&gt;   &lt;dbl&gt;</span></span>
+<span id="cb6-9"><a href="#cb6-9" tabindex="-1"></a><span class="co">#&gt; 1 1       01             nback 01     0.0133 0.00121</span></span>
+<span id="cb6-10"><a href="#cb6-10" tabindex="-1"></a><span class="co">#&gt; 2 1       01             nback 01    -0.0172 0.00366</span></span>
+<span id="cb6-11"><a href="#cb6-11" tabindex="-1"></a><span class="co">#&gt; 3 1       01             nback 01    -0.0146 0.00413</span></span>
+<span id="cb6-12"><a href="#cb6-12" tabindex="-1"></a><span class="co">#&gt; 4 1       01             nback 01    -0.0373 0.00403</span></span>
+<span id="cb6-13"><a href="#cb6-13" tabindex="-1"></a><span class="co">#&gt; 5 1       01             nback 01    -0.0468 0.00313</span></span>
+<span id="cb6-14"><a href="#cb6-14" tabindex="-1"></a><span class="co">#&gt; 6 1       01             nback 01    -0.0688 0.00309</span></span></code></pre></div>
+<div id="selecting-variables-by-name-or-wildcard" class="section level3">
+<h3>Selecting variables by name or wildcard</h3>
+<p>You can also pass a character vector of specific variable names, or
+use wildcards to match patterns:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a><span class="co"># All CompCor components</span></span>
+<span id="cb7-2"><a href="#cb7-2" tabindex="-1"></a>compcor_conf <span class="ot">&lt;-</span> <span class="fu">read_confounds</span>(</span>
+<span id="cb7-3"><a href="#cb7-3" tabindex="-1"></a>  proj,</span>
+<span id="cb7-4"><a href="#cb7-4" tabindex="-1"></a>  <span class="at">subid =</span> <span class="st">&quot;01&quot;</span>, <span class="at">task =</span> <span class="st">&quot;rest&quot;</span>,</span>
+<span id="cb7-5"><a href="#cb7-5" tabindex="-1"></a>  <span class="at">cvars =</span> <span class="fu">c</span>(<span class="st">&quot;a_comp_cor_*&quot;</span>, <span class="st">&quot;t_comp_cor_*&quot;</span>)</span>
+<span id="cb7-6"><a href="#cb7-6" tabindex="-1"></a>)</span>
+<span id="cb7-7"><a href="#cb7-7" tabindex="-1"></a><span class="fu">names</span>(compcor_conf<span class="sc">$</span>data[[<span class="dv">1</span>]])</span>
+<span id="cb7-8"><a href="#cb7-8" tabindex="-1"></a><span class="co">#&gt; [1] &quot;a_comp_cor_00&quot; &quot;a_comp_cor_01&quot; &quot;a_comp_cor_02&quot; &quot;a_comp_cor_03&quot;</span></span>
+<span id="cb7-9"><a href="#cb7-9" tabindex="-1"></a><span class="co">#&gt; [5] &quot;a_comp_cor_04&quot; &quot;a_comp_cor_05&quot; &quot;t_comp_cor_00&quot; &quot;t_comp_cor_01&quot;</span></span>
+<span id="cb7-10"><a href="#cb7-10" tabindex="-1"></a><span class="co">#&gt; [9] &quot;t_comp_cor_02&quot;</span></span></code></pre></div>
+</div>
+<div id="flat-output-for-quick-modeling" class="section level3">
+<h3>Flat output for quick modeling</h3>
+<p>When you just want a single table for modeling, use
+<code>nest = FALSE</code>:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" tabindex="-1"></a>conf_flat <span class="ot">&lt;-</span> <span class="fu">read_confounds</span>(</span>
+<span id="cb8-2"><a href="#cb8-2" tabindex="-1"></a>  proj,</span>
+<span id="cb8-3"><a href="#cb8-3" tabindex="-1"></a>  <span class="at">cvars =</span> <span class="fu">confound_set</span>(<span class="st">&quot;motion6&quot;</span>),</span>
+<span id="cb8-4"><a href="#cb8-4" tabindex="-1"></a>  <span class="at">nest =</span> <span class="cn">FALSE</span></span>
+<span id="cb8-5"><a href="#cb8-5" tabindex="-1"></a>)</span>
+<span id="cb8-6"><a href="#cb8-6" tabindex="-1"></a><span class="fu">dim</span>(conf_flat)</span>
+<span id="cb8-7"><a href="#cb8-7" tabindex="-1"></a><span class="co">#&gt; [1] 400  10</span></span>
+<span id="cb8-8"><a href="#cb8-8" tabindex="-1"></a><span class="fu">head</span>(conf_flat)</span>
+<span id="cb8-9"><a href="#cb8-9" tabindex="-1"></a><span class="co">#&gt; # A tibble: 6 × 10</span></span>
+<span id="cb8-10"><a href="#cb8-10" tabindex="-1"></a><span class="co">#&gt;   trans_x  trans_y trans_z   rot_x     rot_y    rot_z participant_id task  run  </span></span>
+<span id="cb8-11"><a href="#cb8-11" tabindex="-1"></a><span class="co">#&gt;     &lt;dbl&gt;    &lt;dbl&gt;   &lt;dbl&gt;   &lt;dbl&gt;     &lt;dbl&gt;    &lt;dbl&gt; &lt;chr&gt;          &lt;chr&gt; &lt;chr&gt;</span></span>
+<span id="cb8-12"><a href="#cb8-12" tabindex="-1"></a><span class="co">#&gt; 1  0.0133  0.00456 -0.0187 0.00121  -5.84e-6  2.30e-4 01             nback 01   </span></span>
+<span id="cb8-13"><a href="#cb8-13" tabindex="-1"></a><span class="co">#&gt; 2 -0.0172 -0.00769  0.0118 0.00366  -1.26e-3  1.62e-4 01             nback 01   </span></span>
+<span id="cb8-14"><a href="#cb8-14" tabindex="-1"></a><span class="co">#&gt; 3 -0.0146  0.00699  0.0117 0.00413  -1.05e-3 -8.40e-4 01             nback 01   </span></span>
+<span id="cb8-15"><a href="#cb8-15" tabindex="-1"></a><span class="co">#&gt; 4 -0.0373 -0.0300  -0.0219 0.00403  -1.60e-3 -1.40e-3 01             nback 01   </span></span>
+<span id="cb8-16"><a href="#cb8-16" tabindex="-1"></a><span class="co">#&gt; 5 -0.0468 -0.0494  -0.0229 0.00313  -2.23e-3 -1.16e-3 01             nback 01   </span></span>
+<span id="cb8-17"><a href="#cb8-17" tabindex="-1"></a><span class="co">#&gt; 6 -0.0688 -0.0368  -0.0220 0.00309  -3.83e-3  5.46e-5 01             nback 01   </span></span>
+<span id="cb8-18"><a href="#cb8-18" tabindex="-1"></a><span class="co">#&gt; # ℹ 1 more variable: session &lt;chr&gt;</span></span></code></pre></div>
+<p>Each row is one volume, with subject/task/run identifiers alongside
+the confound values – ready to join with your design matrix.</p>
+<p>fMRIPrep writes leading <code>NA</code> values for derivative-type
+confounds such as <code>framewise_displacement</code> and
+<code>*_derivative1</code>. The default preserves those values for
+backward compatibility. For raw nuisance regressors that need to go
+directly into a GLM design matrix, set <code>na_action = &quot;zero&quot;</code>
+to use the common fMRIPrep convention of replacing those leading values
+with zero.</p>
+</div>
+</div>
+<div id="confound-strategies-pca-reduction" class="section level2">
+<h2>Confound strategies: PCA reduction</h2>
+<p>For high-dimensional confound sets, you often want to reduce the
+dimensionality rather than include all regressors directly. A
+<code>confound_strategy()</code> splits variables into two groups: those
+reduced via PCA and those kept as-is.</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" tabindex="-1"></a><span class="fu">list_confound_strategies</span>()</span>
+<span id="cb9-2"><a href="#cb9-2" tabindex="-1"></a><span class="co">#&gt;     strategy                                                      description</span></span>
+<span id="cb9-3"><a href="#cb9-3" tabindex="-1"></a><span class="co">#&gt; 1 pcabasic80 PCA(motion24 + aCompCor + tCompCor + CSF + WM, 80% var) + cosine</span></span></code></pre></div>
+<p>The built-in <code>&quot;pcabasic80&quot;</code> strategy applies PCA to motion
+and CompCor variables (retaining 80% of variance) while keeping cosine
+regressors unchanged:</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" tabindex="-1"></a>strat <span class="ot">&lt;-</span> <span class="fu">confound_strategy</span>(<span class="st">&quot;pcabasic80&quot;</span>)</span>
+<span id="cb10-2"><a href="#cb10-2" tabindex="-1"></a>conf_pca <span class="ot">&lt;-</span> <span class="fu">read_confounds</span>(proj, <span class="at">subid =</span> <span class="st">&quot;01&quot;</span>, <span class="at">task =</span> <span class="st">&quot;rest&quot;</span>, <span class="at">cvars =</span> strat)</span>
+<span id="cb10-3"><a href="#cb10-3" tabindex="-1"></a><span class="fu">names</span>(conf_pca<span class="sc">$</span>data[[<span class="dv">1</span>]])</span>
+<span id="cb10-4"><a href="#cb10-4" tabindex="-1"></a><span class="co">#&gt;  [1] &quot;PC1&quot;       &quot;PC2&quot;       &quot;PC3&quot;       &quot;PC4&quot;       &quot;PC5&quot;       &quot;PC6&quot;      </span></span>
+<span id="cb10-5"><a href="#cb10-5" tabindex="-1"></a><span class="co">#&gt;  [7] &quot;PC7&quot;       &quot;PC8&quot;       &quot;PC9&quot;       &quot;PC10&quot;      &quot;PC11&quot;      &quot;PC12&quot;     </span></span>
+<span id="cb10-6"><a href="#cb10-6" tabindex="-1"></a><span class="co">#&gt; [13] &quot;PC13&quot;      &quot;PC14&quot;      &quot;PC15&quot;      &quot;PC16&quot;      &quot;cosine_00&quot; &quot;cosine_01&quot;</span></span>
+<span id="cb10-7"><a href="#cb10-7" tabindex="-1"></a><span class="co">#&gt; [19] &quot;cosine_02&quot;</span></span></code></pre></div>
+<p>The motion and CompCor variables have been replaced by a handful of
+principal components, while the cosine regressors pass through
+untouched.</p>
+<div id="custom-strategies" class="section level3">
+<h3>Custom strategies</h3>
+<p>You can build your own strategy by specifying which variables get
+PCA-reduced and which are kept raw:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a>my_strat <span class="ot">&lt;-</span> <span class="fu">confound_strategy</span>(</span>
+<span id="cb11-2"><a href="#cb11-2" tabindex="-1"></a>  <span class="at">pca_vars =</span> <span class="fu">c</span>(<span class="fu">confound_set</span>(<span class="st">&quot;motion24&quot;</span>), <span class="fu">confound_set</span>(<span class="st">&quot;acompcor&quot;</span>)),</span>
+<span id="cb11-3"><a href="#cb11-3" tabindex="-1"></a>  <span class="at">raw_vars =</span> <span class="fu">c</span>(<span class="st">&quot;framewise_displacement&quot;</span>, <span class="fu">confound_set</span>(<span class="st">&quot;cosine&quot;</span>)),</span>
+<span id="cb11-4"><a href="#cb11-4" tabindex="-1"></a>  <span class="at">npcs =</span> <span class="dv">5</span></span>
+<span id="cb11-5"><a href="#cb11-5" tabindex="-1"></a>)</span>
+<span id="cb11-6"><a href="#cb11-6" tabindex="-1"></a></span>
+<span id="cb11-7"><a href="#cb11-7" tabindex="-1"></a>conf_custom <span class="ot">&lt;-</span> <span class="fu">read_confounds</span>(proj, <span class="at">subid =</span> <span class="st">&quot;01&quot;</span>, <span class="at">task =</span> <span class="st">&quot;nback&quot;</span>, <span class="at">cvars =</span> my_strat)</span>
+<span id="cb11-8"><a href="#cb11-8" tabindex="-1"></a><span class="fu">names</span>(conf_custom<span class="sc">$</span>data[[<span class="dv">1</span>]])</span>
+<span id="cb11-9"><a href="#cb11-9" tabindex="-1"></a><span class="co">#&gt; [1] &quot;PC1&quot;                    &quot;PC2&quot;                    &quot;PC3&quot;                   </span></span>
+<span id="cb11-10"><a href="#cb11-10" tabindex="-1"></a><span class="co">#&gt; [4] &quot;PC4&quot;                    &quot;PC5&quot;                    &quot;framewise_displacement&quot;</span></span>
+<span id="cb11-11"><a href="#cb11-11" tabindex="-1"></a><span class="co">#&gt; [7] &quot;cosine_00&quot;              &quot;cosine_01&quot;              &quot;cosine_02&quot;</span></span></code></pre></div>
+<p>Five PCs from the motion + aCompCor space, plus FD and cosine
+regressors kept in their original form.</p>
+</div>
+</div>
+<div id="reading-event-files" class="section level2">
+<h2>Reading event files</h2>
+<p>Event files describe the experimental design – trial onsets,
+durations, and conditions. <code>read_events()</code> returns them as
+nested tibbles:</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" tabindex="-1"></a>events <span class="ot">&lt;-</span> <span class="fu">read_events</span>(proj, <span class="at">task =</span> <span class="st">&quot;nback&quot;</span>)</span>
+<span id="cb12-2"><a href="#cb12-2" tabindex="-1"></a>events</span>
+<span id="cb12-3"><a href="#cb12-3" tabindex="-1"></a><span class="co">#&gt; # A tibble: 2 × 9</span></span>
+<span id="cb12-4"><a href="#cb12-4" tabindex="-1"></a><span class="co">#&gt; # Groups:   .task, .session, .run, .subid [2]</span></span>
+<span id="cb12-5"><a href="#cb12-5" tabindex="-1"></a><span class="co">#&gt;   .task .session .run  .subid task  session run   participant_id data    </span></span>
+<span id="cb12-6"><a href="#cb12-6" tabindex="-1"></a><span class="co">#&gt;   &lt;chr&gt; &lt;chr&gt;    &lt;chr&gt; &lt;chr&gt;  &lt;chr&gt; &lt;chr&gt;   &lt;chr&gt; &lt;chr&gt;          &lt;list&gt;  </span></span>
+<span id="cb12-7"><a href="#cb12-7" tabindex="-1"></a><span class="co">#&gt; 1 nback &lt;NA&gt;     01    01     nback &lt;NA&gt;    01    01             &lt;tibble&gt;</span></span>
+<span id="cb12-8"><a href="#cb12-8" tabindex="-1"></a><span class="co">#&gt; 2 nback &lt;NA&gt;     01    02     nback &lt;NA&gt;    01    02             &lt;tibble&gt;</span></span></code></pre></div>
+<p>Unnest to get a flat trial table:</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" tabindex="-1"></a>trials <span class="ot">&lt;-</span> events <span class="sc">|&gt;</span></span>
+<span id="cb13-2"><a href="#cb13-2" tabindex="-1"></a>  <span class="fu">unnest</span>(data) <span class="sc">|&gt;</span></span>
+<span id="cb13-3"><a href="#cb13-3" tabindex="-1"></a>  <span class="fu">select</span>(.subid, .task, .run, onset, duration, trial_type, response_time)</span>
+<span id="cb13-4"><a href="#cb13-4" tabindex="-1"></a></span>
+<span id="cb13-5"><a href="#cb13-5" tabindex="-1"></a><span class="fu">head</span>(trials)</span>
+<span id="cb13-6"><a href="#cb13-6" tabindex="-1"></a><span class="co">#&gt; # A tibble: 6 × 8</span></span>
+<span id="cb13-7"><a href="#cb13-7" tabindex="-1"></a><span class="co">#&gt; # Groups:   .task, .session, .run, .subid [1]</span></span>
+<span id="cb13-8"><a href="#cb13-8" tabindex="-1"></a><span class="co">#&gt;   .session .subid .task .run  onset duration trial_type response_time</span></span>
+<span id="cb13-9"><a href="#cb13-9" tabindex="-1"></a><span class="co">#&gt;   &lt;chr&gt;    &lt;chr&gt;  &lt;chr&gt; &lt;chr&gt; &lt;dbl&gt;    &lt;dbl&gt; &lt;chr&gt;              &lt;dbl&gt;</span></span>
+<span id="cb13-10"><a href="#cb13-10" tabindex="-1"></a><span class="co">#&gt; 1 &lt;NA&gt;     01     nback 01     6.87        2 0back              0.806</span></span>
+<span id="cb13-11"><a href="#cb13-11" tabindex="-1"></a><span class="co">#&gt; 2 &lt;NA&gt;     01     nback 01     7.11        2 0back              0.705</span></span>
+<span id="cb13-12"><a href="#cb13-12" tabindex="-1"></a><span class="co">#&gt; 3 &lt;NA&gt;     01     nback 01     7.93        2 0back              0.805</span></span>
+<span id="cb13-13"><a href="#cb13-13" tabindex="-1"></a><span class="co">#&gt; 4 &lt;NA&gt;     01     nback 01     8.50        2 2back              0.781</span></span>
+<span id="cb13-14"><a href="#cb13-14" tabindex="-1"></a><span class="co">#&gt; 5 &lt;NA&gt;     01     nback 01    10.8         2 0back              0.624</span></span>
+<span id="cb13-15"><a href="#cb13-15" tabindex="-1"></a><span class="co">#&gt; 6 &lt;NA&gt;     01     nback 01    17.3         2 2back              0.529</span></span></code></pre></div>
+<div class="sourceCode" id="cb14"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" tabindex="-1"></a>trials <span class="sc">|&gt;</span></span>
+<span id="cb14-2"><a href="#cb14-2" tabindex="-1"></a>  <span class="fu">group_by</span>(.subid, trial_type) <span class="sc">|&gt;</span></span>
+<span id="cb14-3"><a href="#cb14-3" tabindex="-1"></a>  <span class="fu">summarise</span>(</span>
+<span id="cb14-4"><a href="#cb14-4" tabindex="-1"></a>    <span class="at">n_trials =</span> <span class="fu">n</span>(),</span>
+<span id="cb14-5"><a href="#cb14-5" tabindex="-1"></a>    <span class="at">mean_rt =</span> <span class="fu">mean</span>(response_time, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb14-6"><a href="#cb14-6" tabindex="-1"></a>    <span class="at">.groups =</span> <span class="st">&quot;drop&quot;</span></span>
+<span id="cb14-7"><a href="#cb14-7" tabindex="-1"></a>  )</span>
+<span id="cb14-8"><a href="#cb14-8" tabindex="-1"></a><span class="co">#&gt; # A tibble: 4 × 4</span></span>
+<span id="cb14-9"><a href="#cb14-9" tabindex="-1"></a><span class="co">#&gt;   .subid trial_type n_trials mean_rt</span></span>
+<span id="cb14-10"><a href="#cb14-10" tabindex="-1"></a><span class="co">#&gt;   &lt;chr&gt;  &lt;chr&gt;         &lt;int&gt;   &lt;dbl&gt;</span></span>
+<span id="cb14-11"><a href="#cb14-11" tabindex="-1"></a><span class="co">#&gt; 1 01     0back            19   0.772</span></span>
+<span id="cb14-12"><a href="#cb14-12" tabindex="-1"></a><span class="co">#&gt; 2 01     2back            21   0.809</span></span>
+<span id="cb14-13"><a href="#cb14-13" tabindex="-1"></a><span class="co">#&gt; 3 02     0back            18   0.778</span></span>
+<span id="cb14-14"><a href="#cb14-14" tabindex="-1"></a><span class="co">#&gt; 4 02     2back            22   0.777</span></span></code></pre></div>
+<p>If you want everything in one flat table directly, use
+<code>load_all_events()</code>:</p>
+<div class="sourceCode" id="cb15"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" tabindex="-1"></a>all_events <span class="ot">&lt;-</span> <span class="fu">load_all_events</span>(proj, <span class="at">task =</span> <span class="st">&quot;nback&quot;</span>)</span>
+<span id="cb15-2"><a href="#cb15-2" tabindex="-1"></a><span class="fu">nrow</span>(all_events)</span>
+<span id="cb15-3"><a href="#cb15-3" tabindex="-1"></a><span class="co">#&gt; [1] 80</span></span></code></pre></div>
+</div>
+<div id="the-variables-table-one-tibble-per-run" class="section level2">
+<h2>The variables table: one tibble per run</h2>
+<p><code>variables_table()</code> pulls together scans, events, and
+confounds into a single run-level tibble. This is the tidy bridge
+between BIDS and your analysis code:</p>
+<div class="sourceCode" id="cb16"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" tabindex="-1"></a>vars <span class="ot">&lt;-</span> <span class="fu">variables_table</span>(proj)</span>
+<span id="cb16-2"><a href="#cb16-2" tabindex="-1"></a>vars <span class="sc">|&gt;</span> <span class="fu">select</span>(.subid, .task, .run, <span class="fu">any_of</span>(<span class="fu">c</span>(<span class="st">&quot;n_scans&quot;</span>, <span class="st">&quot;n_events&quot;</span>, <span class="st">&quot;n_confound_rows&quot;</span>)))</span>
+<span id="cb16-3"><a href="#cb16-3" tabindex="-1"></a><span class="co">#&gt; # A tibble: 4 × 5</span></span>
+<span id="cb16-4"><a href="#cb16-4" tabindex="-1"></a><span class="co">#&gt;   .subid .task .run  n_scans n_confound_rows</span></span>
+<span id="cb16-5"><a href="#cb16-5" tabindex="-1"></a><span class="co">#&gt;   &lt;chr&gt;  &lt;chr&gt; &lt;chr&gt;   &lt;int&gt;           &lt;int&gt;</span></span>
+<span id="cb16-6"><a href="#cb16-6" tabindex="-1"></a><span class="co">#&gt; 1 01     nback 01          2             100</span></span>
+<span id="cb16-7"><a href="#cb16-7" tabindex="-1"></a><span class="co">#&gt; 2 01     rest  01          2             100</span></span>
+<span id="cb16-8"><a href="#cb16-8" tabindex="-1"></a><span class="co">#&gt; 3 02     nback 01          2             100</span></span>
+<span id="cb16-9"><a href="#cb16-9" tabindex="-1"></a><span class="co">#&gt; 4 02     rest  01          2             100</span></span></code></pre></div>
+<p>Each row is one run. The <code>scans</code>, <code>events</code>, and
+<code>confounds</code> list columns hold the nested data. You can
+selectively include only events or only confounds:</p>
+<div class="sourceCode" id="cb17"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" tabindex="-1"></a>vars_events <span class="ot">&lt;-</span> <span class="fu">variables_table</span>(proj, <span class="at">task =</span> <span class="st">&quot;nback&quot;</span>, <span class="at">include =</span> <span class="st">&quot;events&quot;</span>)</span>
+<span id="cb17-2"><a href="#cb17-2" tabindex="-1"></a>vars_events <span class="sc">|&gt;</span> <span class="fu">select</span>(.subid, .task, .run, n_events)</span>
+<span id="cb17-3"><a href="#cb17-3" tabindex="-1"></a><span class="co">#&gt; # A tibble: 2 × 4</span></span>
+<span id="cb17-4"><a href="#cb17-4" tabindex="-1"></a><span class="co">#&gt;   .subid .task .run  n_events</span></span>
+<span id="cb17-5"><a href="#cb17-5" tabindex="-1"></a><span class="co">#&gt;   &lt;chr&gt;  &lt;chr&gt; &lt;chr&gt;    &lt;int&gt;</span></span>
+<span id="cb17-6"><a href="#cb17-6" tabindex="-1"></a><span class="co">#&gt; 1 01     nback 01          40</span></span>
+<span id="cb17-7"><a href="#cb17-7" tabindex="-1"></a><span class="co">#&gt; 2 02     nback 01          40</span></span></code></pre></div>
+<p>This structure makes it straightforward to write a per-run analysis
+loop:</p>
+<div class="sourceCode" id="cb18"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" tabindex="-1"></a><span class="co"># Use the nback-only table which has both events and confounds columns</span></span>
+<span id="cb18-2"><a href="#cb18-2" tabindex="-1"></a>vars_nback <span class="ot">&lt;-</span> <span class="fu">variables_table</span>(proj, <span class="at">task =</span> <span class="st">&quot;nback&quot;</span>)</span>
+<span id="cb18-3"><a href="#cb18-3" tabindex="-1"></a></span>
+<span id="cb18-4"><a href="#cb18-4" tabindex="-1"></a>vars_nback <span class="sc">|&gt;</span></span>
+<span id="cb18-5"><a href="#cb18-5" tabindex="-1"></a>  <span class="fu">filter</span>(n_events <span class="sc">&gt;</span> <span class="dv">0</span>, n_confound_rows <span class="sc">&gt;</span> <span class="dv">0</span>) <span class="sc">|&gt;</span></span>
+<span id="cb18-6"><a href="#cb18-6" tabindex="-1"></a>  <span class="fu">rowwise</span>() <span class="sc">|&gt;</span></span>
+<span id="cb18-7"><a href="#cb18-7" tabindex="-1"></a>  <span class="fu">mutate</span>(</span>
+<span id="cb18-8"><a href="#cb18-8" tabindex="-1"></a>    <span class="at">n_conditions =</span> <span class="fu">length</span>(<span class="fu">unique</span>(events<span class="sc">$</span>trial_type)),</span>
+<span id="cb18-9"><a href="#cb18-9" tabindex="-1"></a>    <span class="at">mean_fd =</span> <span class="fu">mean</span>(confounds<span class="sc">$</span>framewise_displacement, <span class="at">na.rm =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb18-10"><a href="#cb18-10" tabindex="-1"></a>  ) <span class="sc">|&gt;</span></span>
+<span id="cb18-11"><a href="#cb18-11" tabindex="-1"></a>  <span class="fu">ungroup</span>() <span class="sc">|&gt;</span></span>
+<span id="cb18-12"><a href="#cb18-12" tabindex="-1"></a>  <span class="fu">select</span>(.subid, .task, n_conditions, mean_fd)</span>
+<span id="cb18-13"><a href="#cb18-13" tabindex="-1"></a><span class="co">#&gt; # A tibble: 2 × 4</span></span>
+<span id="cb18-14"><a href="#cb18-14" tabindex="-1"></a><span class="co">#&gt;   .subid .task n_conditions mean_fd</span></span>
+<span id="cb18-15"><a href="#cb18-15" tabindex="-1"></a><span class="co">#&gt;   &lt;chr&gt;  &lt;chr&gt;        &lt;int&gt;   &lt;dbl&gt;</span></span>
+<span id="cb18-16"><a href="#cb18-16" tabindex="-1"></a><span class="co">#&gt; 1 01     nback            2   0.192</span></span>
+<span id="cb18-17"><a href="#cb18-17" tabindex="-1"></a><span class="co">#&gt; 2 02     nback            2   0.196</span></span></code></pre></div>
+</div>
+<div id="dataset-qa-with-bids_report" class="section level2">
+<h2>Dataset QA with bids_report()</h2>
+<p><code>bids_report()</code> assembles a lightweight QA summary
+covering project metadata, compliance checks, pipeline discovery, and
+run-level coverage:</p>
+<div class="sourceCode" id="cb19"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" tabindex="-1"></a>report <span class="ot">&lt;-</span> <span class="fu">bids_report</span>(proj)</span>
+<span id="cb19-2"><a href="#cb19-2" tabindex="-1"></a>report</span>
+<span id="cb19-3"><a href="#cb19-3" tabindex="-1"></a><span class="co">#&gt; BIDS Report</span></span>
+<span id="cb19-4"><a href="#cb19-4" tabindex="-1"></a><span class="co">#&gt; Project: bids_confounds_vignette_5f09544047a </span></span>
+<span id="cb19-5"><a href="#cb19-5" tabindex="-1"></a><span class="co">#&gt; Participants source: file </span></span>
+<span id="cb19-6"><a href="#cb19-6" tabindex="-1"></a><span class="co">#&gt; Subjects: 2 </span></span>
+<span id="cb19-7"><a href="#cb19-7" tabindex="-1"></a><span class="co">#&gt; Sessions: 0 </span></span>
+<span id="cb19-8"><a href="#cb19-8" tabindex="-1"></a><span class="co">#&gt; Tasks: nback, rest </span></span>
+<span id="cb19-9"><a href="#cb19-9" tabindex="-1"></a><span class="co">#&gt; Total runs: 2 </span></span>
+<span id="cb19-10"><a href="#cb19-10" tabindex="-1"></a><span class="co">#&gt; Compliance: passed </span></span>
+<span id="cb19-11"><a href="#cb19-11" tabindex="-1"></a><span class="co">#&gt; Index: available </span></span>
+<span id="cb19-12"><a href="#cb19-12" tabindex="-1"></a><span class="co">#&gt; Pipelines: fmriprep </span></span>
+<span id="cb19-13"><a href="#cb19-13" tabindex="-1"></a><span class="co">#&gt; Indexed runs: 4</span></span></code></pre></div>
+<p>The underlying data is fully accessible for custom reporting:</p>
+<div class="sourceCode" id="cb20"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" tabindex="-1"></a>rdata <span class="ot">&lt;-</span> <span class="fu">bids_report_data</span>(proj)</span>
+<span id="cb20-2"><a href="#cb20-2" tabindex="-1"></a>rdata<span class="sc">$</span>summary</span>
+<span id="cb20-3"><a href="#cb20-3" tabindex="-1"></a><span class="co">#&gt; $n_subjects</span></span>
+<span id="cb20-4"><a href="#cb20-4" tabindex="-1"></a><span class="co">#&gt; [1] 2</span></span>
+<span id="cb20-5"><a href="#cb20-5" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb20-6"><a href="#cb20-6" tabindex="-1"></a><span class="co">#&gt; $n_sessions</span></span>
+<span id="cb20-7"><a href="#cb20-7" tabindex="-1"></a><span class="co">#&gt; NULL</span></span>
+<span id="cb20-8"><a href="#cb20-8" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb20-9"><a href="#cb20-9" tabindex="-1"></a><span class="co">#&gt; $tasks</span></span>
+<span id="cb20-10"><a href="#cb20-10" tabindex="-1"></a><span class="co">#&gt; # A tibble: 2 × 2</span></span>
+<span id="cb20-11"><a href="#cb20-11" tabindex="-1"></a><span class="co">#&gt;   task  n_runs</span></span>
+<span id="cb20-12"><a href="#cb20-12" tabindex="-1"></a><span class="co">#&gt;   &lt;chr&gt;  &lt;int&gt;</span></span>
+<span id="cb20-13"><a href="#cb20-13" tabindex="-1"></a><span class="co">#&gt; 1 nback      1</span></span>
+<span id="cb20-14"><a href="#cb20-14" tabindex="-1"></a><span class="co">#&gt; 2 rest       1</span></span>
+<span id="cb20-15"><a href="#cb20-15" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb20-16"><a href="#cb20-16" tabindex="-1"></a><span class="co">#&gt; $total_runs</span></span>
+<span id="cb20-17"><a href="#cb20-17" tabindex="-1"></a><span class="co">#&gt; [1] 2</span></span>
+<span id="cb20-18"><a href="#cb20-18" tabindex="-1"></a>rdata<span class="sc">$</span>run_coverage</span>
+<span id="cb20-19"><a href="#cb20-19" tabindex="-1"></a><span class="co">#&gt; # A tibble: 4 × 7</span></span>
+<span id="cb20-20"><a href="#cb20-20" tabindex="-1"></a><span class="co">#&gt;   .subid .session .task .run  n_scans n_events n_confound_rows</span></span>
+<span id="cb20-21"><a href="#cb20-21" tabindex="-1"></a><span class="co">#&gt;   &lt;chr&gt;  &lt;chr&gt;    &lt;chr&gt; &lt;chr&gt;   &lt;int&gt;    &lt;int&gt;           &lt;int&gt;</span></span>
+<span id="cb20-22"><a href="#cb20-22" tabindex="-1"></a><span class="co">#&gt; 1 01     &quot;&quot;       nback 01          2        0             100</span></span>
+<span id="cb20-23"><a href="#cb20-23" tabindex="-1"></a><span class="co">#&gt; 2 01     &quot;&quot;       rest  01          2        0             100</span></span>
+<span id="cb20-24"><a href="#cb20-24" tabindex="-1"></a><span class="co">#&gt; 3 02     &quot;&quot;       nback 01          2        0             100</span></span>
+<span id="cb20-25"><a href="#cb20-25" tabindex="-1"></a><span class="co">#&gt; 4 02     &quot;&quot;       rest  01          2        0             100</span></span></code></pre></div>
+<p>You can use the coverage table to spot missing data at a glance:</p>
+<div class="sourceCode" id="cb21"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" tabindex="-1"></a>rdata<span class="sc">$</span>run_coverage <span class="sc">|&gt;</span></span>
+<span id="cb21-2"><a href="#cb21-2" tabindex="-1"></a>  <span class="fu">mutate</span>(</span>
+<span id="cb21-3"><a href="#cb21-3" tabindex="-1"></a>    <span class="at">has_scans =</span> n_scans <span class="sc">&gt;</span> <span class="dv">0</span>,</span>
+<span id="cb21-4"><a href="#cb21-4" tabindex="-1"></a>    <span class="at">has_events =</span> <span class="cf">if</span> (<span class="st">&quot;n_events&quot;</span> <span class="sc">%in%</span> <span class="fu">names</span>(rdata<span class="sc">$</span>run_coverage)) n_events <span class="sc">&gt;</span> <span class="dv">0</span> <span class="cf">else</span> <span class="cn">FALSE</span>,</span>
+<span id="cb21-5"><a href="#cb21-5" tabindex="-1"></a>    <span class="at">has_confounds =</span> n_confound_rows <span class="sc">&gt;</span> <span class="dv">0</span></span>
+<span id="cb21-6"><a href="#cb21-6" tabindex="-1"></a>  )</span>
+<span id="cb21-7"><a href="#cb21-7" tabindex="-1"></a><span class="co">#&gt; # A tibble: 4 × 10</span></span>
+<span id="cb21-8"><a href="#cb21-8" tabindex="-1"></a><span class="co">#&gt;   .subid .session .task .run  n_scans n_events n_confound_rows has_scans</span></span>
+<span id="cb21-9"><a href="#cb21-9" tabindex="-1"></a><span class="co">#&gt;   &lt;chr&gt;  &lt;chr&gt;    &lt;chr&gt; &lt;chr&gt;   &lt;int&gt;    &lt;int&gt;           &lt;int&gt; &lt;lgl&gt;    </span></span>
+<span id="cb21-10"><a href="#cb21-10" tabindex="-1"></a><span class="co">#&gt; 1 01     &quot;&quot;       nback 01          2        0             100 TRUE     </span></span>
+<span id="cb21-11"><a href="#cb21-11" tabindex="-1"></a><span class="co">#&gt; 2 01     &quot;&quot;       rest  01          2        0             100 TRUE     </span></span>
+<span id="cb21-12"><a href="#cb21-12" tabindex="-1"></a><span class="co">#&gt; 3 02     &quot;&quot;       nback 01          2        0             100 TRUE     </span></span>
+<span id="cb21-13"><a href="#cb21-13" tabindex="-1"></a><span class="co">#&gt; 4 02     &quot;&quot;       rest  01          2        0             100 TRUE     </span></span>
+<span id="cb21-14"><a href="#cb21-14" tabindex="-1"></a><span class="co">#&gt; # ℹ 2 more variables: has_events &lt;lgl&gt;, has_confounds &lt;lgl&gt;</span></span></code></pre></div>
+</div>
+<div id="putting-it-together" class="section level2">
+<h2>Putting it together</h2>
+<p>A typical analysis script combines these pieces into a pipeline. Here
+is a sketch that extracts design-ready data for each run:</p>
+<div class="sourceCode" id="cb22"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" tabindex="-1"></a>analysis_data <span class="ot">&lt;-</span> <span class="fu">variables_table</span>(proj, <span class="at">task =</span> <span class="st">&quot;nback&quot;</span>) <span class="sc">|&gt;</span></span>
+<span id="cb22-2"><a href="#cb22-2" tabindex="-1"></a>  <span class="fu">filter</span>(n_events <span class="sc">&gt;</span> <span class="dv">0</span>, n_confound_rows <span class="sc">&gt;</span> <span class="dv">0</span>) <span class="sc">|&gt;</span></span>
+<span id="cb22-3"><a href="#cb22-3" tabindex="-1"></a>  <span class="fu">rowwise</span>() <span class="sc">|&gt;</span></span>
+<span id="cb22-4"><a href="#cb22-4" tabindex="-1"></a>  <span class="fu">mutate</span>(</span>
+<span id="cb22-5"><a href="#cb22-5" tabindex="-1"></a>    <span class="at">n_trials =</span> <span class="fu">nrow</span>(events),</span>
+<span id="cb22-6"><a href="#cb22-6" tabindex="-1"></a>    <span class="at">n_vols =</span> <span class="fu">nrow</span>(confounds)</span>
+<span id="cb22-7"><a href="#cb22-7" tabindex="-1"></a>  ) <span class="sc">|&gt;</span></span>
+<span id="cb22-8"><a href="#cb22-8" tabindex="-1"></a>  <span class="fu">ungroup</span>() <span class="sc">|&gt;</span></span>
+<span id="cb22-9"><a href="#cb22-9" tabindex="-1"></a>  <span class="fu">select</span>(.subid, .task, .run, n_trials, n_vols)</span>
+<span id="cb22-10"><a href="#cb22-10" tabindex="-1"></a></span>
+<span id="cb22-11"><a href="#cb22-11" tabindex="-1"></a>analysis_data</span>
+<span id="cb22-12"><a href="#cb22-12" tabindex="-1"></a><span class="co">#&gt; # A tibble: 2 × 5</span></span>
+<span id="cb22-13"><a href="#cb22-13" tabindex="-1"></a><span class="co">#&gt;   .subid .task .run  n_trials n_vols</span></span>
+<span id="cb22-14"><a href="#cb22-14" tabindex="-1"></a><span class="co">#&gt;   &lt;chr&gt;  &lt;chr&gt; &lt;chr&gt;    &lt;int&gt;  &lt;int&gt;</span></span>
+<span id="cb22-15"><a href="#cb22-15" tabindex="-1"></a><span class="co">#&gt; 1 01     nback 01          40    100</span></span>
+<span id="cb22-16"><a href="#cb22-16" tabindex="-1"></a><span class="co">#&gt; 2 02     nback 01          40    100</span></span></code></pre></div>
+<p>From here you would unnest the events and confounds columns, build
+your design matrix with <code>model.matrix()</code>, and fit your model
+– all in native R tibbles with no intermediate file-path
+bookkeeping.</p>
+</div>
+<div id="next-steps" class="section level2">
+<h2>Next steps</h2>
+<p>For discovering and querying derivative pipelines (which produced
+which files, and how to target one), see
+<code>vignette(&quot;derivatives&quot;)</code>. For raw BIDS inspection and the
+<code>query_files()</code> matching modes, start with
+<code>vignette(&quot;quickstart&quot;)</code>.</p>
+</div>
+
+
+
+<!-- code folding -->
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

@@ -13,15 +13,26 @@
 #' @param modality A regex for matching modality/kind (e.g. "bold"). Default is `"bold"`.
 #'   This is matched against the 'kind' field in parsed BIDS filenames.
 #' @param full_path If TRUE, return full file paths in the `file` column. Default is TRUE.
+#' @param inherit Controls what the function anchors on:
+#'   - `FALSE` (default): read each matching JSON sidecar *file* directly. One
+#'     row per JSON file; `file` is the JSON path.
+#'   - `TRUE`: resolve *effective* metadata per matching imaging *scan* using
+#'     BIDS inheritance ([get_metadata()]). One row per matching data file;
+#'     `file` is the scan path. This surfaces task- and dataset-level sidecars
+#'     that apply to a scan even when it has no file-level JSON of its own.
+#' @param inherit_scope Scope used when `inherit = TRUE`:
+#'   - `"auto"` (default) infers raw/derivatives from file location
+#'   - `"raw"`, `"derivatives"`, or `"all"` override scope explicitly
 #' @param ... Additional arguments passed to `search_files()`.
 #'
-#' @return A tibble with one row per JSON file. Columns include:
-#'   - `file`: the JSON file path
+#' @return A tibble with one row per matched file (a JSON sidecar when
+#'   `inherit = FALSE`, an imaging scan when `inherit = TRUE`). Columns include:
+#'   - `file`: the sidecar (or scan) file path
 #'   - `.subid`: subject ID extracted from filename
 #'   - `.session`: session ID extracted from filename (if present)
 #'   - `.task`: task name extracted from filename (if present)
 #'   - `.run`: run number extracted from filename (if present)
-#'   - Additional columns for each top-level key in the JSON files
+#'   - Additional columns for each resolved top-level metadata key
 #'   If no files are found, returns an empty tibble.
 #'
 #' @examples
@@ -43,7 +54,7 @@
 #'                            full_path=FALSE)
 #'   
 #'   # Clean up
-#'   unlink(ds001_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires internet connection: ", e$message)
 #' })
@@ -54,64 +65,101 @@
 #' @importFrom jsonlite read_json
 #' @importFrom stringr str_match
 #' @export
-read_sidecar <- function(x, subid=".*", task=".*", run=".*", session=".*", modality="bold", full_path=TRUE, ...) {
-  # Find all JSON sidecar files (assumed to end with .json)
-  # and match given criteria:
-  # Note: We use 'kind' instead of 'modality' because the BIDS parser stores
+read_sidecar <- function(x, subid=".*", task=".*", run=".*", session=".*",
+                         modality="bold", full_path=TRUE,
+                         inherit = FALSE,
+                         inherit_scope = c("auto", "raw", "derivatives", "all"),
+                         ...) {
+  inherit_scope <- match.arg(inherit_scope)
 
-  # the modality component (e.g. "bold") in the 'kind' field for JSON files
+  # Convert a resolved metadata list into a one-row tibble with identifying
+  # columns. Keep only scalar (length-1) fields as columns; store vector-valued
+  # fields (e.g. SliceTiming) as list-columns to avoid differing-row errors.
+  build_meta_row <- function(jdata, fn) {
+    bname <- basename(fn)
+    scalar <- vapply(jdata, function(v) length(v) == 1L && is.atomic(v), logical(1))
+    row <- jdata[scalar]
+    vec_fields <- jdata[!scalar]
+    meta_tibble <- tibble::as_tibble(row)
+    for (nm in names(vec_fields)) {
+      meta_tibble[[nm]] <- list(vec_fields[[nm]])
+    }
+    meta_tibble %>%
+      dplyr::mutate(
+        .subid   = stringr::str_match(bname, "sub-([A-Za-z0-9]+)")[, 2],
+        .session = stringr::str_match(bname, "ses-([A-Za-z0-9]+)")[, 2],
+        .task    = stringr::str_match(bname, "task-([A-Za-z0-9]+)")[, 2],
+        .run     = stringr::str_match(bname, "run-([0-9]+)")[, 2],
+        file     = fn
+      )
+  }
+
+  if (isTRUE(inherit)) {
+    # Inheritance mode: anchor on the imaging data files that match the query
+    # and resolve each scan's *effective* metadata across the BIDS inheritance
+    # chain via get_metadata(). This surfaces task-/dataset-level sidecars even
+    # when a scan has no file-level JSON of its own (e.g. ds001), which a
+    # JSON-file-anchored search would miss because higher-level sidecars carry
+    # no `sub-` entity to match a subject filter under strict = TRUE.
+    data_files <- search_files(
+      x, regex = "\\.nii(\\.gz)?$", full_path = full_path, strict = TRUE,
+      subid = subid, task = task, run = run, session = session,
+      kind = modality, ...
+    )
+    if (is.null(data_files) || length(data_files) == 0) {
+      message("No matching data files found for inheritance-aware sidecar read.")
+      return(tibble::tibble())
+    }
+
+    df_list <- lapply(data_files, function(fn) {
+      jdata <- tryCatch(
+        get_metadata(x, fn, inherit = TRUE, scope = inherit_scope),
+        error = function(e) {
+          warning("Failed to resolve metadata: ", fn, " - ", e$message)
+          NULL
+        }
+      )
+      if (is.null(jdata) || length(jdata) == 0) return(NULL)
+      build_meta_row(jdata, fn)
+    })
+    df_list <- df_list[!vapply(df_list, is.null, logical(1))]
+
+    if (length(df_list) == 0) {
+      message("No resolvable metadata for the matching scans.")
+      return(tibble::tibble())
+    }
+    return(dplyr::bind_rows(df_list))
+  }
+
+  # Direct mode: read each matching JSON sidecar file as-is.
+  # Note: we filter on 'kind' rather than 'modality' because the BIDS parser
+  # stores the modality component (e.g. "bold") in the 'kind' field.
   json_files <- search_files(x, regex="\\.json$", full_path=full_path, strict=TRUE,
                              subid=subid, task=task, run=run, session=session, kind=modality, ...)
-  
+
   if (is.null(json_files) || length(json_files) == 0) {
     message("No matching JSON sidecar files found.")
     return(tibble::tibble())
   }
-  
-  parse_metadata <- function(fn) {
-    bname <- basename(fn)
-    # Extract metadata from filename
-    subid_val <- stringr::str_match(bname, "sub-([A-Za-z0-9]+)")[,2]
-    session_val <- stringr::str_match(bname, "ses-([A-Za-z0-9]+)")[,2]
-    task_val <- stringr::str_match(bname, "task-([A-Za-z0-9]+)")[,2]
-    run_val <- stringr::str_match(bname, "run-([0-9]+)")[,2]
-    
-    # Read the JSON
-    jdata <- tryCatch({
-      jsonlite::read_json(fn, simplifyVector = TRUE)
-    }, error=function(e) {
-      warning("Failed to read JSON: ", fn, " - ", e$message)
-      return(NULL)
-    })
+
+  df_list <- lapply(json_files, function(fn) {
+    jdata <- tryCatch(
+      jsonlite::read_json(fn, simplifyVector = TRUE),
+      error = function(e) {
+        warning("Failed to read JSON: ", fn, " - ", e$message)
+        NULL
+      }
+    )
     if (is.null(jdata)) return(NULL)
-    
-    # Convert JSON named list into a one-row tibble
-    meta_tibble <- as.data.frame(jdata, stringsAsFactors = FALSE)
-    if (nrow(meta_tibble) == 0) {
-      # If empty, just return a row of NAs
-      meta_tibble <- tibble::tibble()
-    }
-    meta_tibble <- tibble::as_tibble(meta_tibble)
-    
-    # Add identifying columns
-    meta_tibble <- meta_tibble %>%
-      dplyr::mutate(.subid = subid_val,
-                    .session = session_val,
-                    .task = task_val,
-                    .run = run_val,
-                    file = fn)
-    
-    meta_tibble
-  }
-  
-  df_list <- lapply(json_files, parse_metadata)
-  df_list <- df_list[!sapply(df_list, is.null)]
-  
+    build_meta_row(jdata, fn)
+  })
+  df_list <- df_list[!vapply(df_list, is.null, logical(1))]
+
   if (length(df_list) == 0) {
     message("No valid JSON files could be read.")
     return(tibble::tibble())
   }
-  
+
   dplyr::bind_rows(df_list)
 }
 
@@ -156,7 +204,7 @@ read_sidecar <- function(x, subid=".*", task=".*", run=".*", session=".*", modal
 #'   }
 #'   
 #'   # Clean up
-#'   unlink(ds001_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #'   unlink(ds007_path, recursive=TRUE)
 #' }, error = function(e) {
 #'   message("Example requires internet connection: ", e$message)
@@ -183,6 +231,96 @@ get_repetition_time <- function(x, subid, task, run=".*", session=".*", ...) {
   } else {
     return(as.numeric(tr_val))
   }
+}
+
+.bidser_n_volumes_file <- function(path) {
+  if (!file.exists(path)) {
+    stop("File not found: ", path, call. = FALSE)
+  }
+  rlang::check_installed("RNifti", reason = "to read NIfTI headers for n_volumes().")
+
+  hdr <- tryCatch(
+    RNifti::niftiHeader(path),
+    error = function(e) {
+      stop("Could not read NIfTI header for `", path, "`: ", e$message, call. = FALSE)
+    }
+  )
+  dims <- hdr$dim
+  if (is.null(dims) || length(dims) < 5L || is.na(dims[[1]]) || dims[[1]] < 4L) {
+    return(1L)
+  }
+  nvol <- as.integer(dims[[5]])
+  if (is.na(nvol) || nvol < 1L) 1L else nvol
+}
+
+#' Get the number of volumes in functional scans
+#'
+#' Reads the NIfTI header for one or more BOLD files and returns the 4th data
+#' dimension, i.e. the number of time points/volumes in each scan.
+#'
+#' @param x A character vector of NIfTI paths, or a `bids_project` object.
+#' @param ... Additional arguments passed to methods.
+#' @return For character input, a named integer vector with one value per path.
+#'   For `bids_project` input, a named integer vector by default, or a tibble
+#'   when `as_tibble = TRUE`.
+#' @export
+#' @examples
+#' \dontrun{
+#' n_volumes("sub-01_task-rest_bold.nii.gz")
+#' n_volumes(proj, subid = "01", task = "rest")
+#' }
+n_volumes <- function(x, ...) {
+  UseMethod("n_volumes")
+}
+
+#' @rdname n_volumes
+#' @export
+n_volumes.character <- function(x, ...) {
+  paths <- as.character(x)
+  out <- vapply(paths, .bidser_n_volumes_file, integer(1))
+  names(out) <- paths
+  out
+}
+
+#' @rdname n_volumes
+#' @param subid Regex pattern to match subject IDs.
+#' @param task Regex pattern to match task names.
+#' @param run Regex pattern to match run IDs.
+#' @param session Regex pattern to match session IDs.
+#' @param scope Scan source. `"raw"` uses [func_scans()], while
+#'   `"derivatives"` uses [preproc_scans()].
+#' @param as_tibble If `TRUE`, return `.path`, parsed entities, and `nvols`.
+#' @export
+n_volumes.bids_project <- function(x, subid = ".*", task = ".*", run = ".*",
+                                   session = ".*",
+                                   scope = c("raw", "derivatives"),
+                                   as_tibble = FALSE, ...) {
+  scope <- match.arg(scope)
+  dots <- list(...)
+  dots$full_path <- TRUE
+
+  scans <- if (identical(scope, "raw")) {
+    do.call(func_scans, c(list(x = x, subid = subid, task = task,
+                              run = run, session = session), dots))
+  } else {
+    do.call(preproc_scans, c(list(x = x, subid = subid, task = task,
+                                  run = run, session = session), dots))
+  }
+
+  if (is.null(scans) || length(scans) == 0) {
+    if (isTRUE(as_tibble)) {
+      return(tibble::tibble(.path = character(0), nvols = integer(0)))
+    }
+    return(stats::setNames(integer(0), character(0)))
+  }
+
+  vols <- n_volumes(scans)
+  if (isTRUE(as_tibble)) {
+    out <- bids_entities(scans, include_path = TRUE)
+    out$nvols <- unname(vols)
+    return(out)
+  }
+  vols
 }
 
 

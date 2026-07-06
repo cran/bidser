@@ -42,6 +42,14 @@ test_that("confound_set acompcor respects n", {
   expect_equal(acc_all, "a_comp_cor_*")
 })
 
+test_that("confound_set dvars defaults to one standardized DVARS column", {
+  expect_equal(confound_set("dvars"), "std_dvars")
+  expect_equal(confound_set("std_dvars"), "std_dvars")
+  expect_equal(confound_set("raw_dvars"), "dvars")
+  expect_equal(confound_set("non_std_dvars"), "non_std_dvars")
+  expect_equal(confound_set("vx_wisestd_dvars"), "vx_wisestd_dvars")
+})
+
 test_that("confound_set errors on unknown set", {
   expect_error(confound_set("nonexistent"), "Unknown confound set")
 })
@@ -51,6 +59,59 @@ test_that("list_confound_sets returns a data.frame with expected columns", {
   expect_s3_class(df, "data.frame")
   expect_true(all(c("set", "description") %in% names(df)))
   expect_true("9p" %in% df$set)
+  expect_true("legacy_default" %in% df$set)
+})
+
+test_that("confound_set('legacy_default') is the public handle for DEFAULT_CVARS2", {
+  legacy <- confound_set("legacy_default")
+  expect_equal(length(legacy), 26)
+  # Stable public handle must stay byte-identical to the unexported constant
+  # that external code reaches for via bidser:::DEFAULT_CVARS2.
+  expect_identical(legacy, bidser:::DEFAULT_CVARS2)
+  expect_identical(legacy, names(bidser:::CVARS_ALIASES))
+  expect_true(all(c("csf", "white_matter", "global_signal",
+                    "framewise_displacement",
+                    "a_comp_cor_00", "t_comp_cor_05",
+                    "trans_x", "rot_z") %in% legacy))
+  expect_true(confound_set("LEGACY_DEFAULT") |> identical(legacy))
+})
+
+
+test_that("check_confounds flags zero-variance and rank-deficient columns", {
+  df <- tibble::tibble(
+    participant_id = "01",
+    task = "rest",
+    run = "01",
+    x = c(1, 2, 3, 4),
+    y = c(2, 4, 6, 8),
+    z = c(1, 1, 1, 1)
+  )
+
+  diag <- check_confounds(df, checks = c("zero_variance", "rank"))
+  expect_true("z" %in% diag$column[diag$reason == "zero_variance"])
+  expect_equal(sum(diag$reason == "rank_deficient"), 1)
+  expect_equal(unique(diag$action), "flag")
+})
+
+test_that("clean_confounds drops flagged columns and preserves diagnostics", {
+  df <- tibble::tibble(
+    participant_id = "01",
+    task = "rest",
+    run = "01",
+    x = c(1, 2, 3, 4),
+    y = c(2, 4, 6, 8),
+    z = c(1, 1, 1, 1)
+  )
+
+  expect_message(
+    cleaned <- clean_confounds(df, clean = c("zero_variance", "rank")),
+    "Dropped"
+  )
+  data_cols <- setdiff(names(cleaned), c("participant_id", "task", "run"))
+  expect_equal(length(data_cols), 1)
+  diag <- attr(cleaned, "confound_diagnostics")
+  expect_true(all(c("zero_variance", "rank_deficient") %in% diag$reason))
+  expect_equal(unique(diag$action), "drop")
 })
 
 # --- confound_strategy tests ---
@@ -109,8 +170,19 @@ create_rich_confounds_proj <- function() {
                        file.path(temp_dir, "dataset_description.json"),
                        auto_unbox = TRUE)
   dir.create(file.path(temp_dir, "sub-01"))
-  conf_dir <- file.path(temp_dir, "derivatives", "fmriprep", "sub-01", "func")
+  deriv_root <- file.path(temp_dir, "derivatives", "fmriprep")
+  conf_dir <- file.path(deriv_root, "sub-01", "func")
   dir.create(conf_dir, recursive = TRUE)
+  jsonlite::write_json(
+    list(
+      Name = "fMRIPrep",
+      BIDSVersion = "1.7.0",
+      DatasetType = "derivative",
+      GeneratedBy = list(list(Name = "fMRIPrep"))
+    ),
+    file.path(deriv_root, "dataset_description.json"),
+    auto_unbox = TRUE
+  )
 
   n <- 20
   set.seed(42)
@@ -190,4 +262,70 @@ test_that("read_confounds with confound_set still works", {
   # Should have 6 motion columns plus metadata
   data_cols <- setdiff(names(conf), c("participant_id", "task", "run", "session"))
   expect_equal(length(data_cols), 6)
+})
+
+test_that("read_confounds with confound_set('dvars') selects one DVARS variant", {
+  temp_dir <- tempfile("bids_dvars_")
+  dir.create(temp_dir)
+  on.exit(unlink(temp_dir, recursive = TRUE, force = TRUE), add = TRUE)
+
+  readr::write_tsv(tibble::tibble(participant_id = "01"),
+                   file.path(temp_dir, "participants.tsv"))
+  jsonlite::write_json(list(Name = "DvarsTest", BIDSVersion = "1.8.0"),
+                       file.path(temp_dir, "dataset_description.json"),
+                       auto_unbox = TRUE)
+  deriv_root <- file.path(temp_dir, "derivatives", "fmriprep")
+  conf_dir <- file.path(deriv_root, "sub-01", "func")
+  dir.create(conf_dir, recursive = TRUE)
+  jsonlite::write_json(
+    list(
+      Name = "fMRIPrep",
+      BIDSVersion = "1.8.0",
+      DatasetType = "derivative",
+      GeneratedBy = list(list(Name = "fMRIPrep"))
+    ),
+    file.path(deriv_root, "dataset_description.json"),
+    auto_unbox = TRUE
+  )
+  readr::write_tsv(
+    tibble::tibble(
+      dvars = c(1, 2, 3),
+      std_dvars = c(0.1, 0.2, 0.3),
+      non_std_dvars = c(10, 20, 30)
+    ),
+    file.path(conf_dir, "sub-01_task-rest_run-01_desc-confounds_timeseries.tsv")
+  )
+
+  proj <- bids_project(temp_dir, fmriprep = TRUE)
+  conf <- read_confounds(proj, cvars = confound_set("dvars"), nest = FALSE)
+  data_cols <- setdiff(names(conf), c("participant_id", "task", "run", "session"))
+
+  expect_equal(data_cols, "std_dvars")
+})
+
+
+test_that("read_confounds default cvars resolves canonical names to old-style columns", {
+  setup <- create_rich_confounds_proj()
+  on.exit(unlink(setup$path, recursive = TRUE, force = TRUE), add = TRUE)
+
+  # No explicit cvars: exercises the new default confound_set("legacy_default").
+  # The mock dataset uses old fMRIPrep column names, so this also verifies the
+  # canonical default resolves back through the alias table.
+  conf_default <- read_confounds(setup$proj, nest = FALSE)
+  expect_s3_class(conf_default, "tbl_df")
+  expect_equal(nrow(conf_default), setup$n)
+
+  data_cols <- setdiff(names(conf_default),
+                       c("participant_id", "task", "run", "session"))
+  # Motion, global, FD and CompCor present in the mock should all resolve.
+  expect_true(all(c("CSF", "WhiteMatter", "GlobalSignal",
+                    "FramewiseDisplacement",
+                    "X", "Y", "Z", "RotX", "RotY", "RotZ",
+                    "aCompCor00", "tCompCor00") %in% data_cols))
+
+  # Passing the explicit public handle must match the implicit default exactly.
+  conf_explicit <- read_confounds(setup$proj,
+                                  cvars = confound_set("legacy_default"),
+                                  nest = FALSE)
+  expect_identical(names(conf_default), names(conf_explicit))
 })

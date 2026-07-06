@@ -1,5 +1,5 @@
 Package: bidser
-Version: 0.2.0
+Version: 0.5.0
 Title: Work with 'BIDS' (Brain Imaging Data Structure) Projects
 Description: Tools for working with 'BIDS' (Brain Imaging Data Structure)
     formatted neuroimaging datasets. The package provides functionality for
@@ -14,21 +14,22 @@ License: MIT + file LICENSE
 Encoding: UTF-8
 ByteCompile: true
 RoxygenNote: 7.3.3
-Imports: stringr, data.tree, neuroim2, tidyselect, dplyr, assertthat,
-        crayon, fs, jsonlite, magrittr, purrr, readr, rlang,
-        stringdist, tibble, tidyr, httr, rio
-Suggests: ggplot2, plotly, patchwork, viridis, scales, knitr,
-        rmarkdown, testthat, covr, lintr, gluedown, RNifti, future,
-        future.apply
+Imports: data.table, stringr, data.tree, tidyselect, dplyr, fs,
+        jsonlite, purrr, readr, rlang, tibble, tidyr
+Suggests: neuroim2, httr, crayon, stringdist, ggplot2, plotly,
+        patchwork, viridis, scales, knitr, rmarkdown, testthat, covr,
+        lintr, gluedown, RNifti, future, future.apply, pkgdown,
+        albersdown
 VignetteBuilder: knitr
 URL: https://github.com/bbuchsbaum/bidser,
         https://bbuchsbaum.github.io/bidser/
 BugReports: https://github.com/bbuchsbaum/bidser/issues
 Config/Needs/website: albersdown
 NeedsCompilation: no
-Packaged: 2026-02-16 18:03:29 UTC; bbuchsbaum
+Packaged: 2026-07-06 13:31:18 UTC; bbuchsbaum
 Author: Bradley Buchsbaum [aut, cre] (ORCID:
     <https://orcid.org/0000-0002-1108-4866>)
 Maintainer: Bradley Buchsbaum <brad.buchsbaum@gmail.com>
+Depends: R (>= 4.1.0)
 Repository: CRAN
-Date/Publication: 2026-02-19 20:20:12 UTC
+Date/Publication: 2026-07-06 14:10:25 UTC

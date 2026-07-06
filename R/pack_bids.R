@@ -338,7 +338,7 @@ add_resolution_tag <- function(filename, factor) {
 #'   unlink(c(archive_path, archive_filtered, archive_downsampled, zip_path, 
 #'            archive_no_deriv, archive_strict))
 #'   if (exists("archive_parallel")) unlink(archive_parallel)
-#'   unlink(ds_path, recursive = TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example failed: ", e$message)
 #' })
@@ -378,7 +378,7 @@ pack_bids <- function(x,
     }
     # Check for neuroim2 package
     if (!requireNamespace("neuroim2", quietly = TRUE)) {
-      stop("The 'neuroim2' package is required for downsampling. Please install it.")
+      stop("Package 'neuroim2' is required for this function. Install with: remotes::install_github('bbuchsbaum/neuroim2')", call. = FALSE)
     }
   }
   
@@ -455,9 +455,12 @@ pack_bids <- function(x,
   if (is.null(temp_dir)) {
     temp_dir <- tempdir()
   }
-  
-  # Use shorter directory name to avoid path length issues
-  temp_project_dir <- file.path(temp_dir, project_name)
+
+  # Always stage inside a distinct parent directory. The archive root itself is
+  # kept short so internal tar does not warn about non-portable member paths.
+  archive_parent_dir <- tempfile("bidser_pack_", tmpdir = temp_dir)
+  archive_root <- .bidser_archive_root_name(project_name)
+  temp_project_dir <- file.path(archive_parent_dir, archive_root)
   
   if (verbose) {
     message("\n=== Starting pack_bids ===")
@@ -600,74 +603,90 @@ pack_bids <- function(x,
           downsample_start <- Sys.time()
         }
         
+        process_downsample_file <- function(rel_path, add_resolution_tag_fn, downsample_fn) {
+          from_file <- file.path(from_path, rel_path)
+          to_file_with_res <- add_resolution_tag_fn(file.path(to_path, rel_path), downsample_factor)
+
+          to_dir <- dirname(to_file_with_res)
+          if (!dir.exists(to_dir)) {
+            dir.create(to_dir, recursive = TRUE, showWarnings = FALSE)
+          }
+
+          downsample_fn(
+            from_file,
+            to_file_with_res,
+            factor = downsample_factor,
+            method = downsample_method,
+            verbose = FALSE
+          )
+        }
+
+        run_sequential_downsampling <- function() {
+          if (verbose) {
+            message("  Using sequential processing")
+          }
+
+          sequential_results <- vector("list", length(imaging_files))
+          for (i in seq_along(imaging_files)) {
+            rel_path <- imaging_files[i]
+
+            if (verbose && (i == 1 || i %% 10 == 0 || i == length(imaging_files))) {
+              message(sprintf("  Processing file %d/%d: %s", i, length(imaging_files), basename(rel_path)))
+            }
+
+            sequential_results[[i]] <- process_downsample_file(
+              rel_path,
+              add_resolution_tag,
+              downsample_single_file
+            )
+          }
+          sequential_results
+        }
+
         # Setup parallel processing if applicable
         if (use_parallel && length(imaging_files) > 1) {
           if (verbose) {
             message(sprintf("  Using parallel processing with %d workers", ncores))
           }
-          # Set up future plan
-          old_plan <- future::plan()
-          on.exit(future::plan(old_plan), add = TRUE)
-          future::plan(future::multisession, workers = ncores)
-          
-          # Process files in parallel
-          if (verbose) {
-            message(sprintf("  Starting parallel processing of %d files...", length(imaging_files)))
-            message("  (Progress updates not available in parallel mode)")
-          }
 
           # Capture internal functions as local variables for parallel workers
           .add_resolution_tag <- add_resolution_tag
           .downsample_single_file <- downsample_single_file
+          .process_downsample_file <- process_downsample_file
 
-          results <- future.apply::future_lapply(imaging_files, function(rel_path) {
-            from_file <- file.path(from_path, rel_path)
-            # Add resolution tag to output filename
-            to_file_with_res <- .add_resolution_tag(file.path(to_path, rel_path), downsample_factor)
+          results <- tryCatch({
+            old_plan <- future::plan()
+            on.exit(future::plan(old_plan), add = TRUE)
+            future::plan(future::multisession, workers = ncores)
 
-            # Create directory if needed
-            to_dir <- dirname(to_file_with_res)
-            if (!dir.exists(to_dir)) {
-              dir.create(to_dir, recursive = TRUE, showWarnings = FALSE)
+            if (verbose) {
+              message(sprintf("  Starting parallel processing of %d files...", length(imaging_files)))
+              message("  (Progress updates not available in parallel mode)")
             }
 
-            # Downsample the file
-            .downsample_single_file(from_file, to_file_with_res,
-                                 factor = downsample_factor,
-                                 method = downsample_method,
-                                 verbose = FALSE)
-          }, future.seed = TRUE)
+            future.apply::future_lapply(imaging_files, function(rel_path) {
+              .process_downsample_file(
+                rel_path,
+                .add_resolution_tag,
+                .downsample_single_file
+              )
+            }, future.seed = TRUE)
+          }, error = function(e) {
+            if (verbose) {
+              message(
+                "  Parallel downsampling failed; retrying sequentially: ",
+                conditionMessage(e)
+              )
+            }
+            NULL
+          })
+
+          if (is.null(results)) {
+            results <- run_sequential_downsampling()
+          }
           
         } else {
-          # Sequential processing
-          if (verbose) {
-            message("  Using sequential processing")
-          }
-          
-          results <- vector("list", length(imaging_files))
-          for (i in seq_along(imaging_files)) {
-            rel_path <- imaging_files[i]
-            
-            if (verbose && (i == 1 || i %% 10 == 0 || i == length(imaging_files))) {
-              message(sprintf("  Processing file %d/%d: %s", i, length(imaging_files), basename(rel_path)))
-            }
-            
-            from_file <- file.path(from_path, rel_path)
-            # Add resolution tag to output filename
-            to_file_with_res <- add_resolution_tag(file.path(to_path, rel_path), downsample_factor)
-            
-            # Create directory if needed
-            to_dir <- dirname(to_file_with_res)
-            if (!dir.exists(to_dir)) {
-              dir.create(to_dir, recursive = TRUE, showWarnings = FALSE)
-            }
-            
-            # Downsample the file
-            results[[i]] <- downsample_single_file(from_file, to_file_with_res, 
-                                                  factor = downsample_factor, 
-                                                  method = downsample_method,
-                                                  verbose = FALSE)
-          }
+          results <- run_sequential_downsampling()
         }
         
         # Summary of results
@@ -736,7 +755,7 @@ pack_bids <- function(x,
       # Change to parent directory for cleaner archive paths
       old_wd <- getwd()
       on.exit(setwd(old_wd), add = TRUE)
-      setwd(temp_dir)
+      setwd(archive_parent_dir)
       
       # Create tar.gz archive with basename to avoid full path issues
       temp_archive <- paste0(basename(temp_project_dir), ".tar.gz")
@@ -753,7 +772,7 @@ pack_bids <- function(x,
       # For zip, we need to get all files in the temp directory
       old_wd <- getwd()
       on.exit(setwd(old_wd), add = TRUE)
-      setwd(temp_dir)
+      setwd(archive_parent_dir)
       
       # Get the project directory name
       proj_dir_name <- basename(temp_project_dir)
@@ -799,8 +818,8 @@ pack_bids <- function(x,
     }
     
     # Cleanup if requested
-    if (cleanup && dir.exists(temp_project_dir)) {
-      unlink(temp_project_dir, recursive = TRUE)
+    if (cleanup && dir.exists(archive_parent_dir)) {
+      unlink(archive_parent_dir, recursive = TRUE)
       if (verbose) {
         message("Temporary files cleaned up")
       }
@@ -817,11 +836,22 @@ pack_bids <- function(x,
   }, error = function(e) {
     warning("Failed to create archive: ", e$message)
     # Cleanup on error
-    if (cleanup && dir.exists(temp_project_dir)) {
-      unlink(temp_project_dir, recursive = TRUE)
+    if (cleanup && dir.exists(archive_parent_dir)) {
+      unlink(archive_parent_dir, recursive = TRUE)
     }
     return(NULL)
   })
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_archive_root_name <- function(project_name) {
+  root <- gsub("[^A-Za-z0-9._-]+", "_", basename(as.character(project_name)))
+  root <- sub("^_+", "", sub("_+$", "", root))
+  if (!nzchar(root)) {
+    root <- "bids"
+  }
+  substr(root, 1L, 16L)
 }
 
 #' List Contents of Packed BIDS Archive
@@ -856,7 +886,7 @@ pack_bids <- function(x,
 #'   
 #'   # Clean up
 #'   unlink(archive_path)
-#'   unlink(ds_path, recursive = TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example failed: ", e$message)
 #' })

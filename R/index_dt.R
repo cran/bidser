@@ -1,0 +1,774 @@
+#' @keywords internal
+#' @noRd
+.bidser_index_entity_fields <- function() {
+  c(
+    "subid", "session", "task", "run", "kind", "suffix", "type", "modality",
+    "acq", "ce", "dir", "rec", "echo", "space", "res", "desc", "label",
+    "variant", "from", "to", "target", "class", "mod", "hemi", "mode"
+  )
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_index_schema_version <- function() {
+  2L
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_manifest_colnames <- function() {
+  c(
+    "path", "file", "scope", "pipeline", "extension", "datatype",
+    "size", "file_mtime",
+    .bidser_index_entity_fields()
+  )
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_sidecar_colnames <- function() {
+  c(
+    "path", "file", "directory", "scope", "pipeline",
+    "size", "file_mtime", "specificity", "data",
+    .bidser_index_entity_fields()
+  )
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_empty_manifest_dt <- function() {
+  .bidser_finalize_manifest_dt(data.table::data.table())
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_empty_sidecar_dt <- function() {
+  .bidser_finalize_sidecar_dt(data.table::data.table())
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_empty_resolved_meta_dt <- function() {
+  dt <- data.table::data.table(
+    path = character(0),
+    scope = character(0),
+    data = list(),
+    deps = list()
+  )
+  data.table::setkeyv(dt, c("path", "scope"))
+  dt
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_finalize_manifest_dt <- function(dt, copy = TRUE) {
+  cols <- .bidser_manifest_colnames()
+  dt <- if (isTRUE(copy)) {
+    data.table::as.data.table(data.table::copy(dt))
+  } else {
+    data.table::as.data.table(dt)
+  }
+  char_cols <- setdiff(cols, c("size", "file_mtime"))
+
+  for (nm in setdiff(cols, names(dt))) {
+    if (nm %in% c("size", "file_mtime")) {
+      dt[[nm]] <- numeric(nrow(dt))
+    } else {
+      dt[[nm]] <- rep(NA_character_, nrow(dt))
+    }
+  }
+
+  dt <- dt[, cols, with = FALSE]
+  for (nm in char_cols) {
+    dt[[nm]] <- as.character(dt[[nm]])
+  }
+  dt$size <- as.numeric(dt$size)
+  dt$file_mtime <- as.numeric(dt$file_mtime)
+
+  data.table::setkeyv(dt, "path")
+  data.table::setindexv(
+    dt,
+    c("file", "scope", "pipeline", "subid", "session", "task", "run", "kind", "datatype", "extension")
+  )
+  dt
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_finalize_sidecar_dt <- function(dt, copy = TRUE) {
+  cols <- .bidser_sidecar_colnames()
+  dt <- if (isTRUE(copy)) {
+    data.table::as.data.table(data.table::copy(dt))
+  } else {
+    data.table::as.data.table(dt)
+  }
+  char_cols <- setdiff(cols, c("size", "file_mtime", "specificity", "data"))
+
+  for (nm in setdiff(cols, names(dt))) {
+    if (nm %in% c("size", "file_mtime")) {
+      dt[[nm]] <- numeric(nrow(dt))
+    } else if (nm == "specificity") {
+      dt[[nm]] <- integer(nrow(dt))
+    } else if (nm == "data") {
+      dt[[nm]] <- rep(list(list()), nrow(dt))
+    } else {
+      dt[[nm]] <- rep(NA_character_, nrow(dt))
+    }
+  }
+
+  dt <- dt[, cols, with = FALSE]
+  for (nm in char_cols) {
+    dt[[nm]] <- as.character(dt[[nm]])
+  }
+  dt$size <- as.numeric(dt$size)
+  dt$file_mtime <- as.numeric(dt$file_mtime)
+  dt$specificity <- as.integer(dt$specificity)
+
+  data.table::setkeyv(dt, "path")
+  data.table::setindexv(dt, c("directory", "scope", "pipeline", "kind"))
+  dt
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_finalize_resolved_meta_dt <- function(dt, copy = TRUE) {
+  dt <- if (isTRUE(copy)) {
+    data.table::as.data.table(data.table::copy(dt))
+  } else {
+    data.table::as.data.table(dt)
+  }
+  if (nrow(dt) == 0 && length(names(dt)) == 0) {
+    return(.bidser_empty_resolved_meta_dt())
+  }
+  for (nm in c("path", "scope")) {
+    if (!nm %in% names(dt)) {
+      dt[[nm]] <- character(nrow(dt))
+    }
+    dt[[nm]] <- as.character(dt[[nm]])
+  }
+  if (!"data" %in% names(dt)) {
+    dt$data <- rep(list(list()), nrow(dt))
+  }
+  if (!"deps" %in% names(dt)) {
+    dt$deps <- rep(list(character(0)), nrow(dt))
+  }
+
+  dt <- dt[, c("path", "scope", "data", "deps"), with = FALSE]
+  data.table::setkeyv(dt, c("path", "scope"))
+  dt
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_new_index_session_key <- function(path, index_path = NULL) {
+  counter <- get0(
+    ".bidser_index_session_counter",
+    envir = bidser_pkg_env,
+    inherits = FALSE,
+    ifnotfound = 0L
+  )
+  counter <- as.integer(counter) + 1L
+  assign(".bidser_index_session_counter", counter, envir = bidser_pkg_env)
+
+  paste(
+    normalizePath(path, winslash = "/", mustWork = FALSE),
+    as.character(index_path %||% ""),
+    counter,
+    sep = "::"
+  )
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_has_index_session_key <- function(x) {
+  key <- x$index_session_key %||% ""
+  is.character(key) && length(key) == 1L && nzchar(key)
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_index_cache_key <- function(x) {
+  if (.bidser_has_index_session_key(x)) {
+    return(x$index_session_key)
+  }
+
+  paste(normalizePath(x$path, winslash = "/", mustWork = FALSE), x$index_path %||% "", sep = "::")
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_get_session_index_state <- function(x) {
+  key <- .bidser_index_cache_key(x)
+  if (exists(key, envir = bidser_pkg_env, inherits = FALSE)) {
+    get(key, envir = bidser_pkg_env, inherits = FALSE)
+  } else {
+    NULL
+  }
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_set_session_index_state <- function(x, state) {
+  assign(.bidser_index_cache_key(x), state, envir = bidser_pkg_env)
+  invisible(state)
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_index_state_manifest <- function(state) {
+  if (is.null(state) || is.null(state$manifest)) {
+    return(.bidser_empty_manifest_dt())
+  }
+  .bidser_finalize_manifest_dt(state$manifest)
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_index_state_manifest_tibble <- function(state) {
+  tibble::as_tibble(.bidser_index_state_manifest(state))
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_make_index_state <- function(manifest, sidecars, resolved_meta = NULL,
+                                     copy = TRUE) {
+  list(
+    backend = "data.table",
+    version = .bidser_index_schema_version(),
+    manifest = .bidser_finalize_manifest_dt(manifest, copy = copy),
+    sidecars = .bidser_finalize_sidecar_dt(sidecars, copy = copy),
+    resolved_meta = .bidser_finalize_resolved_meta_dt(
+      resolved_meta %||% .bidser_empty_resolved_meta_dt(),
+      copy = copy
+    )
+  )
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_is_index_state <- function(obj) {
+  is.list(obj) &&
+    identical(obj$backend, "data.table") &&
+    identical(as.integer(obj$version %||% -1L), .bidser_index_schema_version())
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_coerce_index_state <- function(obj) {
+  if (.bidser_is_index_state(obj)) {
+    return(.bidser_make_index_state(
+      manifest = obj$manifest,
+      sidecars = obj$sidecars,
+      resolved_meta = obj$resolved_meta
+    ))
+  }
+
+  NULL
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_file_signature_dt <- function(x, rel_paths) {
+  rel_paths <- unique(as.character(rel_paths %||% character(0)))
+  rel_paths <- rel_paths[nzchar(rel_paths)]
+  if (length(rel_paths) == 0) {
+    dt <- data.table::data.table(path = character(0), size = numeric(0), file_mtime = numeric(0))
+    data.table::setkeyv(dt, "path")
+    return(dt)
+  }
+
+  abs_paths <- file.path(x$path, rel_paths)
+  info <- file.info(abs_paths)
+  dt <- data.table::data.table(
+    path = rel_paths,
+    size = as.numeric(info$size),
+    file_mtime = as.numeric(info$mtime)
+  )
+  dt <- dt[!is.na(dt$file_mtime), ]
+  data.table::setkeyv(dt, "path")
+  dt
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_list_indexed_paths <- function(x) {
+  if (is.null(x$path) || !dir.exists(x$path)) {
+    return(character(0))
+  }
+
+  rel_paths <- list.files(
+    x$path,
+    recursive = TRUE,
+    full.names = FALSE,
+    all.files = FALSE,
+    no.. = TRUE,
+    include.dirs = FALSE
+  )
+  if (length(rel_paths) == 0L) {
+    return(character(0))
+  }
+
+  rel_paths <- gsub("\\\\", "/", rel_paths)
+  abs_paths <- file.path(x$path, rel_paths)
+  rel_paths <- rel_paths[file.exists(abs_paths) & !dir.exists(abs_paths)]
+  if (length(rel_paths) == 0L) {
+    return(character(0))
+  }
+
+  derivative_roots <- .bidser_derivative_roots(x)
+  in_selected_derivative <- rep(FALSE, length(rel_paths))
+  if (length(derivative_roots) > 0L) {
+    for (root in derivative_roots) {
+      prefix <- paste0(root, "/")
+      in_selected_derivative <- in_selected_derivative |
+        rel_paths == root |
+        startsWith(rel_paths, prefix)
+    }
+  }
+
+  in_any_derivatives <- rel_paths == "derivatives" |
+    startsWith(rel_paths, "derivatives/")
+  in_models <- rel_paths == "models" | startsWith(rel_paths, "models/")
+  is_top_level_file <- !grepl("/", rel_paths, fixed = TRUE)
+  is_subject_file <- grepl("^sub-[^/]+/", rel_paths)
+
+  raw_file <- !in_any_derivatives & !in_models &
+    (is_top_level_file | is_subject_file)
+  keep <- raw_file | in_selected_derivative
+
+  unique(sort(rel_paths[keep]))
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_list_sidecar_paths <- function(x) {
+  json_abs <- list.files(
+    x$path,
+    pattern = "\\.json$",
+    recursive = TRUE,
+    full.names = TRUE,
+    include.dirs = FALSE
+  )
+  if (length(json_abs) == 0) {
+    return(character(0))
+  }
+
+  rel <- vapply(json_abs, function(p) .bidser_to_relative_path(x$path, p), character(1))
+  unique(rel[nzchar(rel)])
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_sidecar_row_from_path <- function(x, rel_path) {
+  rel_path <- .bidser_to_relative_path(x$path, rel_path)
+  abs_path <- file.path(x$path, rel_path)
+  info <- file.info(abs_path)
+
+  all_info <- .bidser_index_entities_from_path(x, rel_path)
+
+  entity_fields <- .bidser_index_entity_fields()
+  specificity <- length(setdiff(names(all_info), c("kind", "suffix", "type")))
+  directory <- dirname(rel_path)
+  if (identical(directory, ".")) {
+    directory <- ""
+  }
+
+  data_value <- tryCatch(
+    jsonlite::read_json(abs_path, simplifyVector = TRUE),
+    error = function(e) list()
+  )
+  if (is.null(data_value) || !is.list(data_value)) {
+    data_value <- list()
+  }
+
+  row <- c(
+    list(
+      path = rel_path,
+      file = basename(rel_path),
+      directory = directory,
+      scope = if (.bidser_is_derivative_path(x, rel_path)) "derivatives" else "raw",
+      pipeline = .bidser_path_pipeline(x, rel_path),
+      size = as.numeric(info$size),
+      file_mtime = as.numeric(info$mtime),
+      specificity = as.integer(specificity),
+      data = list(data_value)
+    ),
+    setNames(lapply(entity_fields, function(k) {
+      val <- all_info[[k]]
+      if (is.null(val) || length(val) == 0) NA_character_ else as.character(val[[1]])
+    }), entity_fields)
+  )
+
+  .bidser_finalize_sidecar_dt(data.table::as.data.table(row))
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_build_manifest_dt <- function(x) {
+  .bidser_finalize_manifest_dt(
+    .bidser_index_rows_from_paths(x, .bidser_list_indexed_paths(x)),
+    copy = FALSE
+  )
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_build_sidecars_dt <- function(x) {
+  rel_paths <- .bidser_list_sidecar_paths(x)
+  if (length(rel_paths) == 0) {
+    return(.bidser_empty_sidecar_dt())
+  }
+
+  rows <- lapply(rel_paths, function(p) .bidser_sidecar_row_from_path(x, p))
+  .bidser_finalize_sidecar_dt(data.table::rbindlist(rows, fill = TRUE))
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_refresh_manifest_dt <- function(x, manifest) {
+  manifest <- .bidser_finalize_manifest_dt(manifest %||% .bidser_empty_manifest_dt())
+  current_paths <- .bidser_list_indexed_paths(x)
+  current_sig <- .bidser_file_signature_dt(x, current_paths)
+  old_sig <- manifest[, c("path", "size", "file_mtime"), with = FALSE]
+
+  added <- setdiff(current_sig$path, old_sig$path)
+  deleted <- setdiff(old_sig$path, current_sig$path)
+  common_paths <- intersect(old_sig$path, current_sig$path)
+  changed <- if (length(common_paths) == 0) {
+    character(0)
+  } else {
+    old_match <- old_sig[match(common_paths, old_sig$path), ]
+    new_match <- current_sig[match(common_paths, current_sig$path), ]
+    common_paths[
+      is.na(old_match$size) | is.na(new_match$size) |
+        old_match$size != new_match$size |
+        old_match$file_mtime != new_match$file_mtime
+    ]
+  }
+
+  rebuild_paths <- unique(c(added, changed))
+  keep_paths <- setdiff(manifest$path, unique(c(changed, deleted)))
+  keep_dt <- manifest[manifest$path %in% keep_paths, ]
+
+  rebuilt <- if (length(rebuild_paths) > 0) {
+    .bidser_index_rows_from_paths(x, rebuild_paths)
+  } else {
+    .bidser_empty_manifest_dt()
+  }
+
+  out <- if (nrow(keep_dt) == 0 && nrow(rebuilt) == 0) {
+    .bidser_empty_manifest_dt()
+  } else if (nrow(keep_dt) == 0) {
+    rebuilt
+  } else if (nrow(rebuilt) == 0) {
+    keep_dt
+  } else {
+    data.table::rbindlist(list(keep_dt, rebuilt), fill = TRUE)
+  }
+
+  list(
+    manifest = .bidser_finalize_manifest_dt(out),
+    changed = rebuild_paths,
+    deleted = deleted
+  )
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_refresh_sidecars_dt <- function(x, sidecars) {
+  sidecars <- .bidser_finalize_sidecar_dt(sidecars %||% .bidser_empty_sidecar_dt())
+  current_paths <- .bidser_list_sidecar_paths(x)
+  current_sig <- .bidser_file_signature_dt(x, current_paths)
+  old_sig <- sidecars[, c("path", "size", "file_mtime"), with = FALSE]
+
+  added <- setdiff(current_sig$path, old_sig$path)
+  deleted <- setdiff(old_sig$path, current_sig$path)
+  common_paths <- intersect(old_sig$path, current_sig$path)
+  changed <- if (length(common_paths) == 0) {
+    character(0)
+  } else {
+    old_match <- old_sig[match(common_paths, old_sig$path), ]
+    new_match <- current_sig[match(common_paths, current_sig$path), ]
+    common_paths[
+      is.na(old_match$size) | is.na(new_match$size) |
+        old_match$size != new_match$size |
+        old_match$file_mtime != new_match$file_mtime
+    ]
+  }
+
+  rebuild_paths <- unique(c(added, changed))
+  keep_paths <- setdiff(sidecars$path, unique(c(changed, deleted)))
+  keep_dt <- sidecars[sidecars$path %in% keep_paths, ]
+
+  rebuilt <- if (length(rebuild_paths) > 0) {
+    data.table::rbindlist(
+      lapply(rebuild_paths, function(p) .bidser_sidecar_row_from_path(x, p)),
+      fill = TRUE
+    )
+  } else {
+    .bidser_empty_sidecar_dt()
+  }
+
+  out <- if (nrow(keep_dt) == 0 && nrow(rebuilt) == 0) {
+    .bidser_empty_sidecar_dt()
+  } else if (nrow(keep_dt) == 0) {
+    rebuilt
+  } else if (nrow(rebuilt) == 0) {
+    keep_dt
+  } else {
+    data.table::rbindlist(list(keep_dt, rebuilt), fill = TRUE)
+  }
+
+  list(
+    sidecars = .bidser_finalize_sidecar_dt(out),
+    changed = rebuild_paths,
+    deleted = deleted
+  )
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_refresh_resolved_meta_dt <- function(resolved_meta,
+                                             changed_sidecars = character(0),
+                                             changed_targets = character(0),
+                                             deleted_targets = character(0)) {
+  resolved_meta <- .bidser_finalize_resolved_meta_dt(
+    resolved_meta %||% .bidser_empty_resolved_meta_dt()
+  )
+
+  if (nrow(resolved_meta) == 0) {
+    return(resolved_meta)
+  }
+
+  keep <- rep(TRUE, nrow(resolved_meta))
+  if (length(changed_sidecars) > 0) {
+    keep <- keep & !vapply(
+      resolved_meta$deps,
+      function(dep) any(as.character(dep %||% character(0)) %in% changed_sidecars),
+      logical(1)
+    )
+  }
+
+  invalid_targets <- unique(c(changed_targets, deleted_targets))
+  if (length(invalid_targets) > 0) {
+    keep <- keep & !(resolved_meta$path %in% invalid_targets)
+  }
+
+  kept <- if (any(keep)) {
+    resolved_meta[keep, ]
+  } else {
+    .bidser_empty_resolved_meta_dt()
+  }
+
+  .bidser_finalize_resolved_meta_dt(kept)
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_build_index_state <- function(x, include_sidecars = FALSE) {
+  .bidser_make_index_state(
+    manifest = .bidser_build_manifest_dt(x),
+    sidecars = if (isTRUE(include_sidecars)) {
+      .bidser_build_sidecars_dt(x)
+    } else {
+      .bidser_empty_sidecar_dt()
+    },
+    copy = FALSE
+  )
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_refresh_index_state <- function(x, state, refresh_sidecars = TRUE) {
+  if (is.null(state) || !.bidser_is_index_state(state)) {
+    return(list(
+      state = .bidser_build_index_state(x, include_sidecars = refresh_sidecars),
+      changed = TRUE
+    ))
+  }
+
+  manifest_refresh <- .bidser_refresh_manifest_dt(x, state$manifest)
+  sidecar_refresh <- if (isTRUE(refresh_sidecars)) {
+    .bidser_refresh_sidecars_dt(x, state$sidecars)
+  } else {
+    list(
+      sidecars = .bidser_finalize_sidecar_dt(state$sidecars),
+      changed = character(0),
+      deleted = character(0)
+    )
+  }
+  changed <- length(manifest_refresh$changed) > 0 ||
+    length(manifest_refresh$deleted) > 0 ||
+    length(sidecar_refresh$changed) > 0 ||
+    length(sidecar_refresh$deleted) > 0
+
+  resolved_meta <- if (changed) {
+    .bidser_refresh_resolved_meta_dt(
+      state$resolved_meta,
+      changed_sidecars = unique(c(sidecar_refresh$changed, sidecar_refresh$deleted)),
+      changed_targets = manifest_refresh$changed,
+      deleted_targets = manifest_refresh$deleted
+    )
+  } else {
+    state$resolved_meta
+  }
+
+  list(
+    state = .bidser_make_index_state(
+      manifest = manifest_refresh$manifest,
+      sidecars = sidecar_refresh$sidecars,
+      resolved_meta = resolved_meta
+    ),
+    changed = changed
+  )
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_persist_index_state <- function(x, state) {
+  if (!is.null(x$index_path) && nzchar(x$index_path)) {
+    index_warnings <- character(0)
+    index_error <- tryCatch(
+      withCallingHandlers(
+        {
+          saveRDS(state, x$index_path)
+          NULL
+        },
+        warning = function(w) {
+          index_warnings <<- c(index_warnings, conditionMessage(w))
+          invokeRestart("muffleWarning")
+        }
+      ),
+      error = function(e) e
+    )
+
+    if (!is.null(index_error)) {
+      index_parent <- dirname(x$index_path)
+      parent_exists <- dir.exists(index_parent)
+      parent_writable <- if (parent_exists) {
+        file.access(index_parent, mode = 2) == 0
+      } else {
+        NA
+      }
+      index_writable <- if (file.exists(x$index_path)) {
+        file.access(x$index_path, mode = 2) == 0
+      } else {
+        NA
+      }
+      write_reasons <- unique(c(conditionMessage(index_error), index_warnings))
+      write_reasons <- write_reasons[nzchar(write_reasons)]
+
+      warning(
+        paste(
+          c(
+            "Could not write the bidser file index cache; continuing with an in-memory index for this R session.",
+            paste0("Index path: ", x$index_path),
+            paste0("Project path: ", x$path),
+            paste0("Reason: ", paste(write_reasons, collapse = " | ")),
+            paste0("Index parent exists: ", parent_exists),
+            paste0("Index parent writable: ", parent_writable),
+            paste0("Existing index writable: ", index_writable),
+            "To silence this warning, call bids_project(..., index = \"none\") or pass index_path to a writable job-local path."
+          ),
+          collapse = "\n"
+        ),
+        call. = FALSE
+      )
+    }
+  }
+  .bidser_set_session_index_state(x, state)
+  invisible(state)
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_load_cached_index_state <- function(x, refresh = FALSE, persist = FALSE,
+                                            refresh_sidecars = TRUE) {
+  state <- .bidser_get_session_index_state(x)
+
+  if (is.null(state) && !is.null(x$index_path) && nzchar(x$index_path) && file.exists(x$index_path)) {
+    state <- .bidser_coerce_index_state(
+      tryCatch(readRDS(x$index_path), error = function(e) NULL)
+    )
+  }
+
+  if (is.null(state)) {
+    return(NULL)
+  }
+
+  if (isTRUE(refresh)) {
+    refreshed <- .bidser_refresh_index_state(
+      x,
+      state,
+      refresh_sidecars = refresh_sidecars
+    )
+    state <- refreshed$state
+    if (isTRUE(persist) && isTRUE(refreshed$changed)) {
+      .bidser_persist_index_state(x, state)
+    } else {
+      .bidser_set_session_index_state(x, state)
+    }
+  } else {
+    .bidser_set_session_index_state(x, state)
+  }
+
+  state
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_get_or_build_index_state <- function(x, persist = FALSE,
+                                             include_sidecars = FALSE) {
+  state <- .bidser_load_cached_index_state(
+    x,
+    refresh = TRUE,
+    persist = persist,
+    refresh_sidecars = include_sidecars
+  )
+  if (!is.null(state)) {
+    return(state)
+  }
+
+  state <- .bidser_build_index_state(x, include_sidecars = include_sidecars)
+  if (isTRUE(persist)) {
+    .bidser_persist_index_state(x, state)
+  } else {
+    .bidser_set_session_index_state(x, state)
+  }
+
+  state
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_lookup_resolved_meta <- function(state, path, scope) {
+  resolved <- .bidser_finalize_resolved_meta_dt(state$resolved_meta)
+  hit <- resolved[resolved$path == path & resolved$scope == scope, ]
+  if (nrow(hit) == 0) {
+    return(NULL)
+  }
+  hit$data[[1]]
+}
+
+#' @keywords internal
+#' @noRd
+.bidser_store_resolved_meta <- function(state, path, scope, data, deps = character(0)) {
+  resolved <- .bidser_finalize_resolved_meta_dt(state$resolved_meta)
+  path_val <- path
+  scope_val <- scope
+  resolved <- resolved[!(resolved$path == path_val & resolved$scope == scope_val), ]
+  resolved <- data.table::rbindlist(
+    list(
+      resolved,
+      data.table::data.table(
+        path = path,
+        scope = scope,
+        data = list(data %||% list()),
+        deps = list(as.character(deps %||% character(0)))
+      )
+    ),
+    fill = TRUE
+  )
+  state$resolved_meta <- .bidser_finalize_resolved_meta_dt(resolved)
+  state
+}

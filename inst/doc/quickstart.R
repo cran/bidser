@@ -1,5 +1,5 @@
 params <-
-list(family = "red")
+list(family = "red", preset = "homage")
 
 ## ----include = FALSE----------------------------------------------------------
 knitr::opts_chunk$set(
@@ -10,6 +10,12 @@ knitr::opts_chunk$set(
 )
 
 ## ----theme-setup, include = FALSE---------------------------------------------
+if (requireNamespace("ggplot2", quietly = TRUE) &&
+    requireNamespace("albersdown", quietly = TRUE)) {
+  ggplot2::theme_set(
+    albersdown::theme_albers(family = params$family, preset = params$preset)
+  )
+}
 suppressPackageStartupMessages({
   library(bidser)
   library(tibble)
@@ -17,6 +23,18 @@ suppressPackageStartupMessages({
   library(tidyr)
   library(gluedown)
 })
+
+## ----albers-classes, echo=FALSE, results='asis'-------------------------------
+cat(sprintf(
+  paste0(
+    '<script>document.addEventListener("DOMContentLoaded",function(){',
+    'document.body.classList.remove("palette-red","palette-lapis","palette-ochre","palette-teal","palette-green","palette-violet","preset-homage","preset-study","preset-structural","preset-adobe","preset-midnight");',
+    'document.body.classList.add("palette-%s","preset-%s");',
+    '});</script>'
+  ),
+  params$family,
+  params$preset
+))
 
 ## ----setup, include = FALSE---------------------------------------------------
 ds001_path <- tryCatch(
@@ -46,7 +64,7 @@ bids_summary(proj)
 
 ## -----------------------------------------------------------------------------
 # Find all anatomical T1-weighted images
-t1w_files <- search_files(proj, regex = "T1w\\.nii", full_path = FALSE)
+t1w_files <- query_files(proj, regex = "T1w\\.nii", full_path = FALSE)
 head(t1w_files)
 
 # Find all functional BOLD scans
@@ -106,6 +124,24 @@ trial_counts <- events_data %>%
 trial_counts
 
 ## -----------------------------------------------------------------------------
+# Read the task-level sidecar directly
+direct_sidecars <- read_sidecar(
+  proj,
+  task = "balloonanalogrisktask",
+  inherit = FALSE
+)
+
+nrow(direct_sidecars)
+direct_sidecars %>% select(any_of(c("RepetitionTime", "TaskName")))
+
+## -----------------------------------------------------------------------------
+# Resolve effective metadata for a specific BOLD file
+resolved_meta <- get_metadata(proj, bold_files[[1]], inherit = TRUE)
+
+names(resolved_meta)
+resolved_meta$RepetitionTime
+
+## -----------------------------------------------------------------------------
 # Create a subject-specific interface for subject 01
 subject_01 <- bids_subject(proj, "01")
 
@@ -147,41 +183,140 @@ subject_trial_summary <- lapply(participants(proj)[1:3], function(subj_id) {
 subject_trial_summary
 
 ## -----------------------------------------------------------------------------
-# Find all JSON sidecar files
-json_files <- search_files(proj, regex = "\\.json$")
-cat("Found", length(json_files), "JSON files\n")
+# Exact entity matching -- reproducible, no regex surprises
+exact_bold <- query_files(
+  proj,
+  regex = "bold\\.nii\\.gz$",
+  subid = "01",
+  task = "balloonanalogrisktask",
+  match_mode = "exact"
+)
+cat("Exact-match BOLD files:", length(exact_bold), "\n")
 
-# Find files for specific runs
-run1_files <- search_files(proj, regex = "bold", run = "01")
-cat("Found", length(run1_files), "files from run 01\n")
+# Regex entity matching -- select multiple values with patterns
+regex_bold <- query_files(
+  proj,
+  regex = "bold\\.nii\\.gz$",
+  subid = "0[1-3]",
+  task = "balloon.*",
+  match_mode = "regex"
+)
+cat("Regex-match BOLD files:", length(regex_bold), "\n")
 
-# Complex pattern matching: T1w files for subjects 01-05
-t1w_subset <- search_files(proj, regex = "T1w", subid = "0[1-5]")
-cat("Found", length(t1w_subset), "T1w files for subjects 01-05\n")
+# Glob matching -- shell-style wildcards
+glob_bold <- query_files(
+  proj,
+  regex = "bold\\.nii\\.gz$",
+  subid = "0*",
+  match_mode = "glob"
+)
+cat("Glob-match BOLD files:", length(glob_bold), "\n")
 
 ## -----------------------------------------------------------------------------
-# Get full paths to functional scans for analysis
+# Require the queried entity to actually exist on returned files
+task_annotated <- query_files(
+  proj,
+  regex = "\\.nii\\.gz$",
+  task = ".*",
+  require_entity = TRUE,
+  scope = "raw"
+)
+cat("Files with an explicit task entity:", length(task_annotated), "\n")
+
+# Filter by extension and datatype directly
+json_files <- query_files(proj, extension = "\\.json$")
+cat("JSON files:", length(json_files), "\n")
+
+func_niftis <- query_files(proj, datatype = "func", extension = "\\.nii\\.gz$")
+cat("Functional NIfTIs:", length(func_niftis), "\n")
+
+## -----------------------------------------------------------------------------
+# Return a tibble instead of paths -- includes all parsed BIDS entities
+bold_tbl <- query_files(
+  proj,
+  regex = "bold\\.nii\\.gz$",
+  subid = "0[1-3]",
+  return = "tibble"
+)
+bold_tbl |> select(path, subid, task, run)
+
+## ----derivatives-query, eval = FALSE------------------------------------------
+# deriv_path <- get_example_bids_dataset("ds000001-fmriprep")
+# proj_deriv <- bids_project(deriv_path)
+# 
+# # Search only derivatives from a specific pipeline
+# prep_bold <- query_files(
+#   proj_deriv,
+#   regex = "bold\\.nii\\.gz$",
+#   desc = "preproc",
+#   scope = "derivatives",
+#   pipeline = "fmriprep",
+#   match_mode = "exact"
+# )
+# 
+# # Or use the convenience wrapper
+# deriv_bold <- derivative_files(proj_deriv, pipeline = "fmriprep",
+#                                regex = "bold\\.nii\\.gz$")
+# 
+# # Search everywhere and get a tibble with scope/pipeline columns
+# all_bold <- query_files(
+#   proj_deriv,
+#   regex = "bold\\.nii\\.gz$",
+#   scope = "all",
+#   return = "tibble"
+# )
+
+## ----permissive-project, eval = FALSE-----------------------------------------
+# proj_relaxed <- bids_project(
+#   "/path/to/bids",
+#   strict_participants = FALSE
+# )
+# 
+# # Check where participant IDs came from
+# participants(proj_relaxed, as_tibble = TRUE)
+# 
+# # See which derivative pipelines were discovered
+# derivative_pipelines(proj_relaxed)
+
+## ----variables-report, eval = FALSE-------------------------------------------
+# vars <- variables_table(
+#   proj_deriv,
+#   scope = "all",
+#   pipeline = "fmriprep"
+# )
+# 
+# vars[, c(".subid", ".task", ".run", "n_scans", "n_events", "n_confound_rows")]
+# 
+# report <- bids_report(proj_deriv, scope = "all", pipeline = "fmriprep")
+# report
+
+## -----------------------------------------------------------------------------
 full_paths <- func_scans(proj, subid = "01", full_path = TRUE)
 full_paths
 
-# Check that files actually exist
 all(file.exists(full_paths))
 
 ## ----derivatives, eval = FALSE------------------------------------------------
-# # Download an fMRIPrep example dataset
 # deriv_path <- get_example_bids_dataset("ds000001-fmriprep")
-# proj_deriv <- bids_project(deriv_path, fmriprep = TRUE)
+# proj_deriv <- bids_project(deriv_path)
 # 
-# proj_deriv
+# # See which pipelines were discovered
+# derivative_pipelines(proj_deriv)
 # 
-# # Convenience functions for derivative files, e.g. preprocessed scans:
-# pscans <- preproc_scans(proj_deriv)
-# head(as.character(pscans))
+# # Query preprocessed BOLD scans
+# preproc <- query_files(
+#   proj_deriv,
+#   regex = "bold\\.nii\\.gz$",
+#   desc = "preproc",
+#   scope = "derivatives",
+#   pipeline = "fmriprep",
+#   return = "tibble"
+# )
+# head(preproc$path)
 # 
-# # Read confound files
+# # Read confound regressors
 # conf <- read_confounds(proj_deriv, subid = "01")
 
 ## ----cleanup, include=FALSE---------------------------------------------------
-if (exists("ds001_path")) unlink(ds001_path, recursive = TRUE)
-if (exists("deriv_path")) unlink(deriv_path, recursive = TRUE)
+# Example datasets are cached by get_example_bids_dataset(); leave them in place.
 

@@ -25,7 +25,7 @@ file_structure_df <- tibble::tribble(
   # Derivatives 
   "01",   NA,       "anat",    NA,      NA,   "T1w",        TRUE,      "preproc", "MNI",  
 "01",   NA,       "func",    "taskA", "01", "bold",       TRUE,      "preproc", "MNI",
-"01",   NA,       "func",    "taskA", "01", "desc-confounds_timeseries.tsv", TRUE, "confounds", NA,
+"01",   NA,       "func",    "taskA", "01", "desc-confounds_timeseries.tsv", TRUE, "confounds", NA
 )
 
 # Define event data (paths must match generated structure)
@@ -86,6 +86,64 @@ test_that("Mock BIDS project can be created", {
   expect_true(mock_proj$has_sessions)
   expect_true(mock_proj$has_fmriprep)
   expect_equal(mock_proj$prep_dir, "derivatives/mockprep")
+})
+
+test_that("create_mock_bids accepts shorthand suffixes for stub datasets", {
+  td <- tempfile("mock-bids-shorthand-")
+  dir.create(td, recursive = TRUE)
+
+  participants_df <- tibble::tibble(
+    participant_id = "01",
+    age = 30
+  )
+
+  file_structure_df <- tibble::tribble(
+    ~subid, ~session, ~datatype, ~task,   ~run, ~suffix,                    ~fmriprep,
+    "01",   NA,       "func",    "taskA", "01", "bold",                   FALSE,
+    "01",   NA,       "func",    "taskA", "01", "events",                 FALSE,
+    "01",   NA,       "func",    "taskA", "01", "desc-confounds_timeseries", TRUE
+  )
+
+  ev_file <- bidser:::generate_bids_filename(
+    subid = "01", task = "taskA", run = "01", suffix = "events.tsv"
+  )
+  conf_file <- bidser:::generate_bids_filename(
+    subid = "01", task = "taskA", run = "01", suffix = "desc-confounds_timeseries.tsv"
+  )
+
+  event_data <- list()
+  event_data[[file.path("sub-01", "func", ev_file)]] <- tibble::tibble(
+    onset = c(1, 3),
+    duration = c(1, 1),
+    cond = c("a", "b"),
+    run = c(1, 1)
+  )
+
+  confound_data <- list()
+  confound_data[[file.path("sub-01", "func", conf_file)]] <- tibble::tibble(
+    motion_x = c(0.1, 0.2),
+    motion_y = c(0.2, 0.3)
+  )
+
+  mock_stub <- expect_no_warning(
+    create_mock_bids(
+      project_name = "Mock",
+      participants = participants_df,
+      file_structure = file_structure_df,
+      event_data = event_data,
+      confound_data = confound_data,
+      create_stub = TRUE,
+      stub_path = td
+    )
+  )
+
+  proj <- suppressWarnings(bids_project(td))
+
+  expect_s3_class(mock_stub, "mock_bids_project")
+  expect_equal(tasks(proj), "taskA")
+  expect_true(file.exists(file.path(td, "sub-01", "func", ev_file)))
+  expect_true(file.exists(file.path(td, "sub-01", "func", "sub-01_task-taskA_run-01_bold.nii.gz")))
+  expect_true(file.exists(file.path(td, "derivatives", "fmriprep", "sub-01", "func", conf_file)))
 })
 
 # --- Test Basic Queries ---
@@ -199,10 +257,14 @@ test_that("Event reading works on mock BIDS project", {
   expect_gt(nrow(events_sub1), 0) # Expect one row for the sub-01 run
 
   # Check metadata columns in the *outer* tibble
-  expect_named(events_sub1, c(".subid", ".task", ".run", ".session", "data"), ignore.order = TRUE)
+  expect_true(all(c(".subid", ".task", ".run", ".session", "data",
+                    "participant_id", "task", "run", "session") %in% names(events_sub1)))
   expect_equal(events_sub1$.subid[[1]], "01") # Access first element
   expect_equal(events_sub1$.task[[1]], "taskA")
   expect_equal(events_sub1$.run[[1]], "01")
+  expect_equal(events_sub1$participant_id[[1]], "01")
+  expect_equal(events_sub1$task[[1]], "taskA")
+  expect_equal(events_sub1$run[[1]], "01")
   # Check session is NA or correct value if applicable
   expect_true(is.na(events_sub1$.session[[1]]) || is.character(events_sub1$.session[[1]]))
 

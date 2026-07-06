@@ -1,12 +1,24 @@
-#' Given a match specification, generate a parser
+#' Generate a parser from a spec
 #'
-#' @param spec A specification object containing `keystruc` and `kinds` tables.
-#'   `keystruc` defines the keys and their regex patterns, and `kinds` defines 
-#'   the possible file types and suffixes.
-#' @param typename The name given to the final type element. Default is "kind".
-#' @return A parser function generated from the specification.
-#' @keywords internal
-#' @noRd
+#' Converts a \code{parser_spec} list (as returned by \code{\link{bids_datatype_spec}}
+#' or the internal \code{func_spec()} etc.) into a parser object suitable for
+#' passing to \code{\link{register_datatype}}.
+#'
+#' @param spec A \code{parser_spec} list with elements \code{keystruc},
+#'   \code{kinds}, and \code{type}, as returned by
+#'   \code{\link{bids_datatype_spec}}.
+#' @param typename The name given to the final type element. Default is
+#'   \code{"kind"}.
+#' @return A regex-based parser object.
+#' @seealso \code{\link{bids_datatype_spec}}, \code{\link{register_datatype}}
+#' @export
+#' @examples
+#' spec <- bids_datatype_spec(
+#'   type     = "dwi",
+#'   entities = c("sub", "ses", "acq", "run"),
+#'   suffixes = list(dwi = c(".nii.gz", ".nii", ".bvec", ".bval", ".json"))
+#' )
+#' parser <- gen_parser(spec)
 gen_parser <- function(spec, typename = "kind") {
   # Check input
   if (!is.list(spec) || !all(c("keystruc", "kinds", "type") %in% names(spec))) {
@@ -41,10 +53,10 @@ func_spec <- function() {
     "subid",        "sub", FALSE,    "[A-Za-z0-9]+",   1,
     "session",      "ses", TRUE,     "[A-Za-z0-9]+",   2,
     "task",         "task",FALSE,    "[A-Za-z0-9]+",   3,
-    "acquisition",  "acq", TRUE,     "[A-Za-z0-9]+",   5,
-    "contrast",     "ce",  TRUE,     "[A-Za-z0-9]+",   6,
-    "reconstruction","rec",TRUE,     "[A-Za-z0-9]+",   7,
-    "run",          "run", TRUE,     "[0-9]+",         4,
+    "acquisition",  "acq", TRUE,     "[A-Za-z0-9]+",   4,
+    "contrast",     "ce",  TRUE,     "[A-Za-z0-9]+",   5,
+    "reconstruction","rec",TRUE,     "[A-Za-z0-9]+",   6,
+    "run",          "run", TRUE,     "[0-9]+",         7,
     "echo",         "echo",TRUE,     "[0-9]+",         8
   )
   
@@ -73,11 +85,11 @@ anat_spec <- function() {
     ~name,            ~key, ~optional, ~pattern,         ~order,
     "subid",          "sub",FALSE,    "[A-Za-z0-9]+",    1,
     "session",        "ses",TRUE,     "[A-Za-z0-9]+",    2,
-    "acquisition",    "acq",TRUE,     "[A-Za-z0-9]+",    4,
-    "contrast",       "ce", TRUE,     "[A-Za-z0-9]+",    5,
-    "dir",            "dir",TRUE,     "[A-Za-z0-9]+",    6,
-    "reconstruction", "rec",TRUE,     "[A-Za-z0-9]+",    7,
-    "run",            "run",TRUE,     "[0-9]+",          3
+    "acquisition",    "acq",TRUE,     "[A-Za-z0-9]+",    3,
+    "contrast",       "ce", TRUE,     "[A-Za-z0-9]+",    4,
+    "dir",            "dir",TRUE,     "[A-Za-z0-9]+",    5,
+    "reconstruction", "rec",TRUE,     "[A-Za-z0-9]+",    6,
+    "run",            "run",TRUE,     "[0-9]+",          7
   )
   
   kinds <- tibble::tribble(
@@ -104,6 +116,33 @@ anat_spec <- function() {
   ret
 }
 
+#' Create a spec table for "dwi" files
+#'
+#' @return A list containing `keystruc`, `kinds`, and `type` describing
+#'   diffusion-weighted imaging files.
+#' @keywords internal
+#' @noRd
+dwi_spec <- function() {
+  keystruc <- tibble::tribble(
+    ~name,            ~key, ~optional, ~pattern,         ~order,
+    "subid",          "sub", FALSE,    "[A-Za-z0-9]+",   1,
+    "session",        "ses", TRUE,     "[A-Za-z0-9]+",   2,
+    "acquisition",    "acq", TRUE,     "[A-Za-z0-9]+",   3,
+    "dir",            "dir", TRUE,     "[A-Za-z0-9]+",   4,
+    "reconstruction", "rec", TRUE,     "[A-Za-z0-9]+",   5,
+    "run",            "run", TRUE,     "[0-9]+",         6
+  )
+
+  kinds <- tibble::tribble(
+    ~kind, ~suffix,
+    "dwi", list(".nii.gz", ".nii", ".json", ".bval", ".bvec")
+  )
+
+  ret <- list(keystruc = keystruc, kinds = kinds, type = "dwi")
+  class(ret) <- c("dwi_spec", "parser_spec")
+  ret
+}
+
 
 #' Create a spec table for fMRIPrep "func" files
 #'
@@ -117,16 +156,16 @@ funcprepspec <- function() {
     "subid",        "sub",    FALSE,    "[A-Za-z0-9]+",  1,
     "session",      "ses",    TRUE,     "[A-Za-z0-9]+",  2,
     "task",         "task",   FALSE,    "[A-Za-z0-9]+",  3,
-    "acquisition",  "acq",    TRUE,     "[A-Za-z0-9]+",  5,
-    "contrast",     "ce",     TRUE,     "[A-Za-z0-9]+",  6,
+    "acquisition",  "acq",    TRUE,     "[A-Za-z0-9]+",  4,
+    "contrast",     "ce",     TRUE,     "[A-Za-z0-9]+",  5,
     "reconstruction","rec",   TRUE,     "[A-Za-z0-9]+",  6,
-    "run",          "run",    TRUE,     "[a-z0-9]+",     4,
-    "echo",         "echo",   TRUE,     "[0-9]+",        6,
-    "modality",     "bold",   TRUE,     NULL,            8,
-    "space",        "space",  TRUE,     "[A-Za-z0-9]+",  9,
-    "res",          "res",    TRUE,     "[A-Za-z0-9]+", 10,
-    "desc",         "desc",   TRUE,     "[A-Za-z0-9]+", 11,
-    "label",        "label",  TRUE,     "[A-Za-z0-9]+", 12,
+    "run",          "run",    TRUE,     "[a-z0-9]+",     7,
+    "echo",         "echo",   TRUE,     "[0-9]+",        8,
+    "modality",     "bold",   TRUE,     NULL,            9,
+    "space",        "space",  TRUE,     "[A-Za-z0-9]+", 10,
+    "res",          "res",    TRUE,     "[A-Za-z0-9]+", 11,
+    "desc",         "desc",   TRUE,     "[A-Za-z0-9]+", 12,
+    "label",        "label",  TRUE,     "[A-Za-z0-9]+", 13,
     "variant",      "variant",TRUE,     "[A-Za-z0-9]+", 14
   )
   
@@ -166,22 +205,22 @@ anatprepspec <- function() {
     ~name,           ~key,      ~optional, ~pattern,        ~order,
     "subid",         "sub",     FALSE,    "[A-Za-z0-9]+",   1,
     "session",       "ses",     TRUE,     "[A-Za-z0-9]+",   2,
-    "acquisition",   "acq",     TRUE,     "[A-Za-z0-9]+",   4,
+    "acquisition",   "acq",     TRUE,     "[A-Za-z0-9]+",   3,
     "from",          "from",    TRUE,     "[A-Za-z0-9]+",   4,
     "to",            "to",      TRUE,     "[A-Za-z0-9]+",   5,
-    "contrast",      "ce",      TRUE,     "[A-Za-z0-9]+",   5,
-    "dir",           "dir",     TRUE,     "[A-Za-z0-9]+",   6,
-    "reconstruction","rec",     TRUE,     "[A-Za-z0-9]+",   7,
-    "run",           "run",     TRUE,     "[0-9]+",         3,
-    "modality",      list(anat_types),TRUE, NULL,            8,
-    "space",         "space",   TRUE,     "[A-Za-z0-9]+",   9,
-    "label",         "label",   TRUE,     "[A-Za-z0-9]+",  10,
-    "desc",          "desc",    TRUE,     "[A-Za-z0-9]+",  11,
-    "mode",          "mode",    TRUE,     "[A-Za-z0-9]+",  11,
-    "target",        "target",  TRUE,     "[A-Za-z0-9]+",  12,
-    "class",         "class",   TRUE,     "[A-Za-z0-9]+",  13,
-    "mod",           "mod",     TRUE,     "[A-Za-z0-9]+",  14,
-    "hemi",          "hemi",    TRUE,     "[LR]",          15
+    "contrast",      "ce",      TRUE,     "[A-Za-z0-9]+",   6,
+    "dir",           "dir",     TRUE,     "[A-Za-z0-9]+",   7,
+    "reconstruction","rec",     TRUE,     "[A-Za-z0-9]+",   8,
+    "run",           "run",     TRUE,     "[0-9]+",         9,
+    "modality",      list(anat_types),TRUE, NULL,           10,
+    "space",         "space",   TRUE,     "[A-Za-z0-9]+",  11,
+    "label",         "label",   TRUE,     "[A-Za-z0-9]+",  12,
+    "desc",          "desc",    TRUE,     "[A-Za-z0-9]+",  13,
+    "mode",          "mode",    TRUE,     "[A-Za-z0-9]+",  13,
+    "target",        "target",  TRUE,     "[A-Za-z0-9]+",  14,
+    "class",         "class",   TRUE,     "[A-Za-z0-9]+",  15,
+    "mod",           "mod",     TRUE,     "[A-Za-z0-9]+",  16,
+    "hemi",          "hemi",    TRUE,     "[LR]",          17
   )
   
   kinds <- tibble::tribble(
@@ -254,4 +293,3 @@ fmapspec <- function() {
   class(ret) <- c("fmap_spec", "parser_spec")
   ret
 }
-

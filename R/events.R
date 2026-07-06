@@ -1,3 +1,66 @@
+.bidser_event_path_entity <- function(path, entity) {
+  pattern <- switch(
+    entity,
+    subid = "(^|/)sub-([^/]+)(/|_|$)",
+    session = "(^|/)ses-([^/]+)(/|_|$)",
+    task = "(^|_)task-([^_/]+)(_|$)",
+    run = "(^|_)run-([^_/]+)(_|$)",
+    stop("Unknown event entity: ", entity)
+  )
+  match <- regexec(pattern, path, perl = TRUE)
+  value <- regmatches(path, match)[[1]]
+  if (length(value) >= 3) value[[3]] else NA_character_
+}
+
+.bidser_event_entity_matches <- function(value, pattern) {
+  if (identical(pattern, ".*")) {
+    return(TRUE)
+  }
+  if (is.null(value) || length(value) == 0 || is.na(value)) {
+    return(FALSE)
+  }
+  grepl(pattern, value)
+}
+
+.bidser_event_files_from_filesystem <- function(x, subid, task, run, session, full_path) {
+  if (is.null(x$path) || !dir.exists(x$path)) {
+    return(NULL)
+  }
+
+  files <- list.files(
+    x$path,
+    pattern = "events\\.tsv$",
+    recursive = TRUE,
+    full.names = TRUE,
+    all.files = FALSE
+  )
+  if (length(files) == 0) {
+    return(NULL)
+  }
+
+  rel <- sub(paste0("^", gsub("([\\^$.|?*+(){}\\[\\]\\\\])", "\\\\\\1", x$path), "/?"), "", files)
+  raw_file <- grepl("^sub-[^/]+/", rel)
+  if (!any(raw_file)) {
+    return(NULL)
+  }
+
+  files <- files[raw_file]
+  rel <- rel[raw_file]
+
+  keep <- vapply(rel, function(path) {
+    .bidser_event_entity_matches(.bidser_event_path_entity(path, "subid"), subid) &&
+      .bidser_event_entity_matches(.bidser_event_path_entity(path, "task"), task) &&
+      .bidser_event_entity_matches(.bidser_event_path_entity(path, "run"), run) &&
+      .bidser_event_entity_matches(.bidser_event_path_entity(path, "session"), session)
+  }, logical(1))
+
+  if (!any(keep)) {
+    return(NULL)
+  }
+
+  unique(if (isTRUE(full_path)) files[keep] else rel[keep])
+}
+
 #' Retrieve event files from a BIDS project
 #' 
 #' Finds event files matching the given subject, task, run, and session criteria.
@@ -21,7 +84,7 @@
 #'   files <- event_files(x, subid="01", task="balloonanalogrisktask")
 #'   
 #'   # Clean up
-#'   unlink(ds001_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires internet connection: ", e$message)
 #' })
@@ -34,7 +97,7 @@ event_files.bids_project <- function(x, subid=".*", task=".*", run=".*", session
   
   # Use search_files to find event files
   tryCatch({
-    search_files(
+    ret <- search_files(
       x,
       regex = "events\\.tsv$",  # Match files ending with events.tsv
       subid = subid,
@@ -45,10 +108,77 @@ event_files.bids_project <- function(x, subid=".*", task=".*", run=".*", session
       strict = TRUE,  # Require that all queried keys exist in matched files
       ...
     )
+    if (!is.null(ret) && length(ret) > 0) {
+      return(ret)
+    }
+    .bidser_event_files_from_filesystem(
+      x,
+      subid = subid,
+      task = task,
+      run = run,
+      session = session,
+      full_path = full_path
+    )
   }, error = function(e) {
     warning("Error searching for event files: ", e$message)
     character(0)  # Return empty character vector on error
   })
+}
+
+.bidser_read_events_table <- function(file) {
+  first_lines <- readLines(file, n = 25L, warn = FALSE)
+  first_lines <- first_lines[nzchar(trimws(first_lines))]
+
+  if (length(first_lines) == 0L || grepl("\t", first_lines[[1]])) {
+    return(readr::read_delim(
+      file,
+      delim = "\t",
+      na = c("n/a", "NA", "N/A", ""),
+      show_col_types = FALSE
+    ))
+  }
+
+  readr::read_table(
+    file,
+    na = c("n/a", "NA", "N/A", ""),
+    show_col_types = FALSE
+  )
+}
+
+.bidser_event_empty_result <- function() {
+  tibble::tibble(
+    .task = character(0),
+    .session = character(0),
+    .run = character(0),
+    .subid = character(0),
+    task = character(0),
+    session = character(0),
+    run = character(0),
+    participant_id = character(0),
+    data = list()
+  )
+}
+
+.bidser_add_event_metadata_aliases <- function(x) {
+  if (!inherits(x, "data.frame")) {
+    return(x)
+  }
+  if (".task" %in% names(x) && !"task" %in% names(x)) {
+    x$task <- x$.task
+  }
+  if (".session" %in% names(x) && !"session" %in% names(x)) {
+    x$session <- x$.session
+  }
+  if (".run" %in% names(x) && !"run" %in% names(x)) {
+    x$run <- x$.run
+  }
+  if (".subid" %in% names(x) && !"participant_id" %in% names(x)) {
+    x$participant_id <- x$.subid
+  }
+
+  preferred <- c(".task", ".session", ".run", ".subid",
+                 "task", "session", "run", "participant_id", "data")
+  x[, c(intersect(preferred, names(x)), setdiff(names(x), preferred)), drop = FALSE]
 }
 
 
@@ -80,7 +210,6 @@ event_files.bids_project <- function(x, subid=".*", task=".*", run=".*", session
 #'
 #' @importFrom dplyr mutate group_by bind_rows %>% filter
 #' @importFrom tidyr nest
-#' @importFrom magrittr %>%
 #' @importFrom stringr str_detect
 #' @importFrom rlang .data
 #' @importFrom readr read_delim
@@ -114,7 +243,7 @@ event_files.bids_project <- function(x, subid=".*", task=".*", run=".*", session
 #'   }
 #'   
 #'   # Clean up
-#'   unlink(ds001_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires internet connection: ", e$message)
 #' })
@@ -127,13 +256,7 @@ read_events.bids_project <- function(x, subid=".*", task=".*", run=".*", session
   }
   
   # Create empty result tibble with correct structure
-  empty_result <- tibble::tibble(
-    .task = character(0),
-    .session = character(0),
-    .run = character(0),
-    .subid = character(0),
-    data = list()
-  )
+  empty_result <- .bidser_event_empty_result()
   
   # Get matching participants
   participants_vec <- participants(x)
@@ -218,7 +341,7 @@ read_events.bids_project <- function(x, subid=".*", task=".*", run=".*", session
       event_data <- vector("list", length(evs))
       for (k in seq_along(evs)) {
         df <- tryCatch({
-          readr::read_delim(evs[k], delim = " ", na = c("n/a", "NA", "N/A", ""))
+          .bidser_read_events_table(evs[k])
         }, error = function(e) {
           warning("Failed to read event file: ", evs[k], " - ", e$message)
           NULL
@@ -260,5 +383,5 @@ read_events.bids_project <- function(x, subid=".*", task=".*", run=".*", session
     return(empty_result)
   }
   
-  final_result
+  .bidser_add_event_metadata_aliases(final_result)
 }

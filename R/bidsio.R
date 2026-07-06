@@ -20,7 +20,7 @@
 #'                                      subid="01",
 #'                                      task="balloonanalogrisktask",
 #'                                      run="01")
-#'   unlink(ds_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires derivatives dataset: ", e$message)
 #' })
@@ -44,7 +44,7 @@ read_func_scans.bids_project <- function(x, mask, mode = c("normal", "bigvec"),
   }
   
   if (!requireNamespace("neuroim2", quietly=TRUE)) {
-    stop("Package `neuroim2` is required for `read_func_scans`.")
+    stop("Package 'neuroim2' is required for this function. Install with: remotes::install_github('bbuchsbaum/neuroim2')", call. = FALSE)
   }
   
   neuroim2::read_vec(fnames, mask=mask, mode=mode, ...)
@@ -55,7 +55,8 @@ read_func_scans.bids_project <- function(x, mask, mode = c("normal", "bigvec"),
 #'
 #' This function reads preprocessed functional MRI scans from a BIDS project's fMRIPrep
 #' derivatives directory. It uses the \code{preproc_scans} function to locate the files
-#' and then reads them into a \code{NeuroVec} object using the neuroim2 package. If a
+#' and then reads each one into its own \code{NeuroVec} object using the
+#' neuroim2 package. If a
 #' mask is not provided, one will be automatically created from available brainmask files.
 #'
 #' @param x A \code{bids_project} object with fMRIPrep derivatives
@@ -67,7 +68,8 @@ read_func_scans.bids_project <- function(x, mask, mode = c("normal", "bigvec"),
 #' @param modality Image modality to match (default: "bold" for functional MRI)
 #' @param ... Extra arguments passed to \code{neuroim2::read_vec}
 #' 
-#' @return An instance of type \code{NeuroVec} containing the preprocessed functional data.
+#' @return A named list of \code{NeuroVec} objects, one per matched preprocessed
+#'   scan, in file order.
 #' 
 #' @details
 #' This function requires the \code{neuroim2} package to be installed. It will throw an
@@ -100,9 +102,10 @@ read_func_scans.bids_project <- function(x, mask, mode = c("normal", "bigvec"),
 #'   # Provide a custom mask
 #'   mask <- create_preproc_mask(proj, thresh=0.95)
 #'   masked_scans <- read_preproc_scans(proj, mask=mask)
+#'   first_run <- masked_scans[[1]]
 #'   
 #'   # Clean up
-#'   unlink(ds_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires derivatives dataset: ", e$message)
 #' })
@@ -135,10 +138,14 @@ read_preproc_scans.bids_project <- function(x, mask=NULL, mode = c("normal", "bi
   }
   
   if (!requireNamespace("neuroim2", quietly=TRUE)) {
-    stop("Package `neuroim2` is required for `read_preproc_scans`.")
+    stop("Package 'neuroim2' is required for this function. Install with: remotes::install_github('bbuchsbaum/neuroim2')", call. = FALSE)
   }
   
-  neuroim2::read_vec(fnames, mask=mask, mode=mode, ...)
+  scans <- lapply(fnames, function(fname) {
+    neuroim2::read_vec(fname, mask=mask, mode=mode, ...)
+  })
+  names(scans) <- fnames
+  scans
 }
 
 
@@ -198,7 +205,7 @@ read_preproc_scans.bids_project <- function(x, mask=NULL, mode = c("normal", "bi
 #'                                   task="balloonanalogrisktask",
 #'                                   space="MNI152NLin2009cAsym")
 #'
-#'   unlink(ds_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires derivatives dataset: ", e$message)
 #' })
@@ -235,6 +242,10 @@ create_preproc_mask.bids_project <- function(x, subid, thresh=.99,
   }
   maskfiles <- unique(maskfiles)
 
+  # Restrict to actual image masks; search_files can also return JSON sidecars
+  # that share the same desc/kind entities.
+  maskfiles <- maskfiles[grepl("\\.nii(\\.gz)?$", maskfiles)]
+
   # Restrict to functional (BOLD) masks: require `_task-` in the filename.
   # Anatomical brain masks (anat/) lack a task entity, so this reliably
 
@@ -257,7 +268,7 @@ create_preproc_mask.bids_project <- function(x, subid, thresh=.99,
   }
 
   if (!requireNamespace("neuroim2", quietly = TRUE)) {
-    stop("Package `neuroim2` is required for `create_preproc_mask`.")
+    stop("Package 'neuroim2' is required for this function. Install with: remotes::install_github('bbuchsbaum/neuroim2')", call. = FALSE)
   }
 
   vols <- lapply(maskfiles, neuroim2::read_vol)
@@ -276,12 +287,6 @@ brain_mask.bids_project <- function(x, subid, ...) {
   create_preproc_mask(x, subid = subid, ...)
 }
 
-
-DEFAULT_CVARS <- c("CSF", "WhiteMatter", "GlobalSignal", "stdDVARS", "non.stdDVARS",
-                   "vx.wisestdDVARS", "FramewiseDisplacement", "tCompCor00", "tCompCor01", "tCompCor02",
-                   "tCompCor03", "tCompCor04", "tCompCor05", "aCompCor00", "aCompCor01",
-                   "aCompCor02", "aCompCor03", "aCompCor04", "aCompCor05", "X", "Y", "Z",
-                   "RotX", "RotY", "RotZ")
 
 # canonical confound variables and their possible aliases across fmriprep versions
 CVARS_ALIASES <- list(
@@ -314,7 +319,10 @@ CVARS_ALIASES <- list(
   rot_z = c("RotZ", "rot_z")
 )
 
-# DEPRECATED: use `CVARS_ALIASES` instead
+# Superseded: the public handle is `confound_set("legacy_default")`, which
+# returns this same vector. `DEFAULT_CVARS2` is retained (unexported) so that
+# existing code reaching in via `bidser:::DEFAULT_CVARS2` keeps working; new
+# code should use `confound_set("legacy_default")`. See issue #72.
 DEFAULT_CVARS2 <- names(CVARS_ALIASES)
 
 
@@ -510,15 +518,37 @@ confound_files.bids_project <- function(x, subid=".*", task=".*", session=".*", 
 #' @param session Session regex
 #' @param run Run regex. If the run identifier cannot be extracted from
 #'   the filename, the run value defaults to "1".
-#' @param cvars The names of the confound variables to select. Defaults to \code{DEFAULT_CVARS}.
-#'   Canonical names such as \code{"csf"} are automatically mapped to any
-#'   matching column names found in the dataset using \code{CVARS_ALIASES}.
-#'   You can also pass convenience sets from \code{confound_set()}, e.g.,
-#'   \code{confound_set("motion24")}, or wildcard patterns like
-#'   \code{"cosine_*"}, \code{"motion_outlier_*"}, or \code{"a_comp_cor_*[6]"}.
+#' @param cvars The confound variables to select. Defaults to
+#'   \code{confound_set("legacy_default")}, the historical 26-name default
+#'   (motion6 + CSF/WM + global signal + DVARS family + framewise displacement +
+#'   first six anatomical and temporal CompCor components). Canonical names such
+#'   as \code{"csf"} are automatically mapped to any matching column names found
+#'   in the dataset using the internal alias table. You can also pass convenience
+#'   sets from \code{\link{confound_set}()}, e.g., \code{confound_set("motion24")},
+#'   a denoising strategy from \code{\link{confound_strategy}()}, or wildcard
+#'   patterns like \code{"cosine_*"}, \code{"motion_outlier_*"}, or
+#'   \code{"a_comp_cor_*[6]"}.
+#' @details For new analyses, the recommended modern default is the built-in
+#'   denoising strategy \code{confound_strategy("pcabasic80")}
+#'   (PCA of motion24 + aCompCor + tCompCor + CSF + WM retaining 80\% variance,
+#'   with raw cosine regressors appended). Note this is \emph{not} equivalent to
+#'   the \code{cvars} default \code{confound_set("legacy_default")}: the strategy
+#'   uses motion24 (not motion6) and \emph{all} CompCor components (not the first
+#'   six), and omits the global signal, DVARS, and framewise-displacement
+#'   regressors. Use \code{\link{list_confound_sets}()} and
+#'   \code{\link{list_confound_strategies}()} to discover the available options.
 #' @param npcs Perform PCA reduction on confounds and return \code{npcs} PCs.
 #' @param perc_var Perform PCA reduction to retain \code{perc_var}% variance.
 #' @param nest If TRUE, nests confound tables by subject/task/session/run.
+#' @param clean Character vector controlling run-level confound cleaning before
+#'   returning data or running PCA. Supported values are `"none"`,
+#'   `"zero_variance"`, and `"rank"`. The default drops zero-variance columns
+#'   and records diagnostics in the `confound_diagnostics` attribute.
+#' @param na_action How to handle missing values in raw confound columns before
+#'   returning them. Supported values are `"leave"` (default, preserve missing
+#'   values), `"zero"` (replace missing numeric confounds with 0), and
+#'   `"median"` (replace missing numeric confounds with the column median).
+#'   PCA-reduced confounds already use median imputation internally.
 #' @param ... Additional arguments (not currently used)
 #' @import dplyr
 #' @importFrom readr read_tsv
@@ -527,7 +557,8 @@ confound_files.bids_project <- function(x, subid=".*", task=".*", session=".*", 
 #' @return A `bids_confounds` tibble (nested if nest=TRUE) with identifier columns
 #'   for participant_id, task, session, and run. When PCA is requested, the
 #'   object includes a `pca` attribute with per-run loadings and variance used
-#'   by `plot()`.
+#'   by `plot()`. Dropped or flagged confounds are stored in the
+#'   `confound_diagnostics` attribute.
 #' @examples
 #' \donttest{
 #' # Try to load a BIDS project with fMRIPrep derivatives
@@ -549,16 +580,33 @@ confound_files.bids_project <- function(x, subid=".*", task=".*", session=".*", 
 #'   conf_flat <- read_confounds(proj, nest=FALSE)
 #'   
 #'   # Clean up
-#'   unlink(ds_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires derivatives dataset with confounds: ", e$message)
 #' })
 #' }
+#' @seealso \code{\link{confound_set}}, \code{\link{confound_strategy}},
+#'   \code{\link{list_confound_sets}}, \code{\link{list_confound_strategies}},
+#'   \code{\link{confound_files}}
 #' @export
 read_confounds.bids_project <- function(x, subid=".*", task=".*", session=".*", run=".*",
-                                        cvars=DEFAULT_CVARS, npcs=-1, perc_var=-1, nest=TRUE, ...) {
+                                        cvars=confound_set("legacy_default"), npcs=-1, perc_var=-1,
+                                        nest=TRUE, clean="zero_variance",
+                                        na_action = "leave", ...) {
   if (!inherits(x, "bids_project")) {
     stop("`x` must be a `bids_project` object.")
+  }
+  clean <- .normalize_confound_clean(clean)
+  na_action <- .normalize_confound_na_action(na_action)
+
+  selection <- paste0(
+    "subid=", shQuote(subid),
+    ", task=", shQuote(task),
+    ", session=", shQuote(session),
+    ", run=", shQuote(run)
+  )
+  abort_no_confounds <- function(reason) {
+    rlang::abort(paste0("read_confounds() ", reason, ". Selection: ", selection, "."))
   }
 
   # Detect confound_strategy objects
@@ -567,17 +615,15 @@ read_confounds.bids_project <- function(x, subid=".*", task=".*", session=".*", 
   # Check participants
   sids <- participants(x)
   if (length(sids) == 0) {
-    warning("No participants found in the BIDS project.")
-    return(NULL)
+    abort_no_confounds("could not find any participants in the BIDS project")
   }
   gidx <- grep(subid, sids)
   if (length(gidx) == 0) {
-    warning("No matching participants found for regex: ", subid)
-    return(NULL)
+    abort_no_confounds("found no participants matching the requested subject filter")
   }
   sids <- sids[gidx]
 
-  ret <- lapply(sids, function(s) {
+  ret_all <- lapply(sids, function(s) {
     # Use confound_files to get all possible confound files
     fnames <- confound_files(x, subid=paste0("^", as.character(s), "$"), task=task, session=session)
 
@@ -594,8 +640,7 @@ read_confounds.bids_project <- function(x, subid=".*", task=".*", session=".*", 
     }
 
     if (length(fnames) == 0) {
-      # No confound files for this participant; return empty frame
-      return(list(data = data.frame(), pca = NULL))
+      return(list(data = data.frame(), pca = NULL, status = "no_files"))
     }
 
     # Process each confound file
@@ -625,6 +670,14 @@ read_confounds.bids_project <- function(x, subid=".*", task=".*", session=".*", 
       if (is.null(dfx)) return(NULL)
 
       pca_row <- NULL
+      diagnostics <- .empty_confound_diagnostics()
+      diag_id <- list(
+        participant_id = s,
+        task = task_val,
+        run = run_val,
+        session = sess_val,
+        source = fn
+      )
 
       if (use_strategy) {
         # Strategy mode: PCA a subset, keep the rest raw
@@ -640,11 +693,16 @@ read_confounds.bids_project <- function(x, subid=".*", task=".*", session=".*", 
         }
 
         dfx_pca <- dfx %>% dplyr::select(any_of(pca_cols))
+        pca_clean <- .clean_confound_frame(dfx_pca, clean, id = diag_id, role = "pca")
+        dfx_pca <- pca_clean$data
+        diagnostics <- dplyr::bind_rows(diagnostics, pca_clean$diagnostics)
         s_npcs <- strat$npcs
         s_pv   <- strat$perc_var
+        pca_reduced <- FALSE
         if ((s_npcs > 0 || s_pv > 0) && ncol(dfx_pca) > 1) {
           proc <- process_confounds(dfx_pca, npcs = s_npcs, perc_var = s_pv, return_pca = TRUE)
           dfx_pca <- proc$scores
+          pca_reduced <- TRUE
           if (!is.null(proc$pca)) {
             pca_row <- tibble::tibble(
               participant_id = s,
@@ -655,9 +713,15 @@ read_confounds.bids_project <- function(x, subid=".*", task=".*", session=".*", 
             )
           }
         }
+        if (!pca_reduced) {
+          dfx_pca <- .apply_confound_na_action(dfx_pca, na_action)
+        }
 
         if (length(raw_cols) > 0) {
           dfx_raw <- dfx %>% dplyr::select(any_of(raw_cols))
+          raw_clean <- .clean_confound_frame(dfx_raw, clean, id = diag_id, role = "raw")
+          dfx_raw <- .apply_confound_na_action(raw_clean$data, na_action)
+          diagnostics <- dplyr::bind_rows(diagnostics, raw_clean$diagnostics)
           dfx <- dplyr::bind_cols(tibble::as_tibble(dfx_pca), dfx_raw)
         } else {
           dfx <- tibble::as_tibble(dfx_pca)
@@ -672,11 +736,16 @@ read_confounds.bids_project <- function(x, subid=".*", task=".*", session=".*", 
         }
 
         dfx <- dfx %>% dplyr::select(any_of(sel_cvars))
+        selected_clean <- .clean_confound_frame(dfx, clean, id = diag_id, role = "confound")
+        dfx <- selected_clean$data
+        diagnostics <- dplyr::bind_rows(diagnostics, selected_clean$diagnostics)
 
         # Process confounds if PCA requested
+        pca_reduced <- FALSE
         if ((npcs > 0 || perc_var > 0) && ncol(dfx) > 1) {
           proc <- process_confounds(dfx, npcs=npcs, perc_var=perc_var, return_pca=TRUE)
           dfx <- proc$scores
+          pca_reduced <- TRUE
           if (!is.null(proc$pca)) {
             pca_row <- tibble::tibble(
               participant_id = s,
@@ -687,41 +756,68 @@ read_confounds.bids_project <- function(x, subid=".*", task=".*", session=".*", 
             )
           }
         }
+        if (!pca_reduced) {
+          dfx <- .apply_confound_na_action(dfx, na_action)
+        }
       }
 
       # Add identifying columns
       list(
         data = dfx %>%
           mutate(participant_id=s, task=task_val, run=run_val, session=sess_val),
-        pca = pca_row
+        pca = pca_row,
+        diagnostics = diagnostics
       )
     })
 
     # Filter out any NULL returns
     dflist <- dflist[!sapply(dflist, is.null)]
-    if (length(dflist) == 0) return(list(data = data.frame(), pca = NULL))
+    if (length(dflist) == 0) {
+      return(list(data = data.frame(), pca = NULL, status = "no_usable_confounds"))
+    }
 
     data_list <- lapply(dflist, `[[`, "data")
     pca_list <- lapply(dflist, `[[`, "pca")
+    diag_list <- lapply(dflist, `[[`, "diagnostics")
     data_list <- data_list[!sapply(data_list, is.null)]
     pca_list <- pca_list[!sapply(pca_list, is.null)]
+    diag_list <- diag_list[!sapply(diag_list, is.null)]
 
     data_out <- dplyr::bind_rows(data_list)
     pca_out <- if (length(pca_list) > 0) dplyr::bind_rows(pca_list) else NULL
+    diag_out <- if (length(diag_list) > 0) dplyr::bind_rows(diag_list) else .empty_confound_diagnostics()
 
-    list(data = data_out, pca = pca_out)
+    list(data = data_out, pca = pca_out, diagnostics = diag_out, status = "ok")
   })
 
-  ret <- ret[!sapply(ret, function(z) nrow(z$data)==0)]
+  ret <- ret_all[!sapply(ret_all, function(z) nrow(z$data)==0)]
   if (length(ret) == 0) {
-    message("No confound data found for the given selection.")
-    return(NULL)
+    raw_statuses <- unique(vapply(
+      Filter(function(z) !is.null(z$status), ret_all),
+      `[[`,
+      character(1),
+      "status"
+    ))
+    if (length(raw_statuses) == 0 || identical(raw_statuses, "no_files")) {
+      abort_no_confounds("found no confound files matching the requested filters")
+    }
+    if (all(raw_statuses == "no_usable_confounds")) {
+      abort_no_confounds("found matching confound files, but none contained usable confounds for the requested variables")
+    }
+    abort_no_confounds("found matching confound files, but none produced usable confound data")
   }
 
   ret_data <- dplyr::bind_rows(lapply(ret, `[[`, "data"))
   pca_list <- lapply(ret, `[[`, "pca")
   pca_list <- pca_list[!sapply(pca_list, is.null)]
   pca_meta <- if (length(pca_list) > 0) dplyr::bind_rows(pca_list) else NULL
+  diag_list <- lapply(ret_all, `[[`, "diagnostics")
+  diag_list <- diag_list[!sapply(diag_list, is.null)]
+  confound_diagnostics <- if (length(diag_list) > 0) {
+    dplyr::bind_rows(diag_list)
+  } else {
+    .empty_confound_diagnostics()
+  }
 
   if (nest) {
     ret_data <- ret_data %>% dplyr::group_by(participant_id, task, run, session) %>% tidyr::nest()
@@ -729,6 +825,8 @@ read_confounds.bids_project <- function(x, subid=".*", task=".*", session=".*", 
 
   class(ret_data) <- c("bids_confounds", class(ret_data))
   attr(ret_data, "pca") <- pca_meta
+  attr(ret_data, "confound_diagnostics") <- confound_diagnostics
+  .inform_confound_diagnostics(confound_diagnostics)
 
   ret_data
 }
@@ -736,6 +834,16 @@ read_confounds.bids_project <- function(x, subid=".*", task=".*", session=".*", 
 
 #' @keywords internal
 process_confounds <- function(dfx, center=TRUE, scale=TRUE, npcs=-1, perc_var=-1, return_pca=FALSE) {
+  cleaned <- .clean_confound_frame(dfx, clean = "zero_variance", action = "drop", drop = TRUE)
+  dfx <- cleaned$data
+  if (ncol(dfx) == 0) {
+    empty <- data.frame(row.names = seq_len(nrow(cleaned$data)))
+    if (return_pca) {
+      return(list(scores = empty, pca = NULL))
+    }
+    return(empty)
+  }
+
   m <- as.matrix(dfx)
   # Impute NAs
   if (anyNA(m)) {

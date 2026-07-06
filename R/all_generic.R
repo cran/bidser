@@ -111,7 +111,7 @@ sessions <- function (x, ...) {
 #'   tasks(proj)
 #'   
 #'   # Clean up
-#'   unlink(ds001_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires internet connection: ", e$message)
 #' })
@@ -146,7 +146,7 @@ tasks <- function (x, ...) {
 #'   flat_list(proj, full_path=FALSE)
 #'   
 #'   # Clean up
-#'   unlink(ds001_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires internet connection: ", e$message)
 #' })
@@ -156,29 +156,40 @@ flat_list <- function(x, ...) {
 }
 
 #' Get participants from a BIDS project
-#' 
-#' This function retrieves a vector of unique participant IDs from a BIDS project.
-#' It extracts the subject identifiers from the project's data table, filtering out
-#' any NA values. Participant IDs in BIDS typically follow the format 'sub-XX'.
-#' 
+#'
+#' Retrieves participant information from a BIDS project.  By default returns
+#' a sorted character vector of unique participant IDs (without the `"sub-"`
+#' prefix).
+#'
+#' When `as_tibble = TRUE`, a tibble is returned instead containing the full
+#' `participants.tsv` data (or inferred IDs when the file is missing) plus a
+#' `source` column indicating whether each ID came from the `"table"` or the
+#' `"filesystem"`.
+#'
 #' @param x the `bids_project` object
+#' @param as_tibble Logical.
+#'   If `FALSE` (default), return a character vector of participant IDs.
+#'   If `TRUE`, return a tibble with all `participants.tsv` columns plus a
+#'   `source` column (`"table"` or `"filesystem"`).
 #' @param ... extra args passed to methods
-#' 
-#' @return A character vector of unique participant IDs found in the BIDS project.
-#'   If no participants are found or the 'subid' column doesn't exist in the project's
-#'   data table, returns an empty character vector.
+#'
+#' @return A character vector of unique participant IDs, or a tibble when
+#'   `as_tibble = TRUE`.
 #' @export
 #' @rdname participants-method
-#' @examples 
+#' @examples
 #' \donttest{
 #' # Get participants from a BIDS project
 #' tryCatch({
 #'   ds001_path <- get_example_bids_dataset("ds001")
 #'   proj <- bids_project(ds001_path)
 #'   participants(proj)
-#'   
+#'
+#'   # Get full tibble with provenance
+#'   participants(proj, as_tibble = TRUE)
+#'
 #'   # Clean up
-#'   unlink(ds001_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires internet connection: ", e$message)
 #' })
@@ -221,7 +232,7 @@ participants <- function (x, ...) {
 #'   }
 #'   
 #'   # Clean up
-#'   unlink(ds001_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires internet connection: ", e$message)
 #' })
@@ -262,7 +273,7 @@ event_files <- function (x, ...) {
 #'   confound_files(proj, subid="sub-01", task="balloonanalogrisktask")
 #'   
 #'   # Clean up
-#'   unlink(ds_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires internet connection: ", e$message)
 #' })
@@ -279,12 +290,19 @@ confound_files <- function (x, ...) {
 #' returns a nested tibble for easy data manipulation.
 #'
 #' @param x The object to read events from (typically a `bids_project`).
+#' @param subid Regex pattern to match subject IDs. Default is `".*"`.
+#' @param task Regex pattern to match tasks. Default is `".*"`.
+#' @param run Regex pattern to match runs. Default is `".*"`.
+#' @param session Regex pattern to match sessions. Default is `".*"`.
 #' @param ... Additional arguments passed to methods.
 #'
 #' @return A nested tibble with columns:
 #'   - `.task`: Task name
+#'   - `.session`: Session ID
 #'   - `.run`: Run number
 #'   - `.subid`: Subject ID
+#'   - `task`, `session`, `run`, `participant_id`: bare aliases for the
+#'     legacy dotted metadata columns
 #'   - `data`: Nested column containing the event data
 #'   If no matching data is found, returns an empty tibble with appropriate columns.
 #'
@@ -316,13 +334,14 @@ confound_files <- function (x, ...) {
 #'   }
 #'   
 #'   # Clean up
-#'   unlink(ds001_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires internet connection: ", e$message)
 #' })
 #' }
 #' @export
-read_events <- function(x, ...) {
+read_events <- function(x, subid = ".*", task = ".*", run = ".*",
+                        session = ".*", ...) {
   UseMethod("read_events")
 }
 
@@ -336,6 +355,17 @@ read_events <- function(x, ...) {
 #' and return either nested or flat tibbles.
 #'
 #' @param x The object to read confounds from (typically a `bids_project`).
+#' @param subid Regex to match subject IDs. Default is `".*"`.
+#' @param task Regex to match tasks. Default is `".*"`.
+#' @param session Regex to match sessions. Default is `".*"`.
+#' @param run Regex to match runs. Default is `".*"`.
+#' @param cvars Character vector of confound variable names to select.
+#' @param npcs Integer. Perform PCA reduction and return this many PCs.
+#' @param perc_var Numeric. Perform PCA reduction to retain this percentage of
+#'   variance.
+#' @param nest Logical. If `TRUE`, nest confound tables by subject/task/session/run.
+#' @param clean Confound cleaning operations passed to methods.
+#' @param na_action How methods should handle missing numeric confound values.
 #' @param ... Additional arguments passed to methods, including:
 #'   - `subid`: Regex to match subject IDs (default: ".*")
 #'   - `task`: Regex to match tasks (default: ".*")
@@ -390,13 +420,16 @@ read_events <- function(x, ...) {
 #'                                nest=FALSE)
 #'   
 #'   # Clean up
-#'   unlink(ds_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires internet connection: ", e$message)
 #' })
 #' }
 #' @export
-read_confounds <- function(x, ...) {
+read_confounds <- function(x, subid = ".*", task = ".*", session = ".*",
+                           run = ".*", cvars = confound_set("legacy_default"),
+                           npcs = -1, perc_var = -1, nest = TRUE,
+                           clean = "zero_variance", na_action = "leave", ...) {
   UseMethod("read_confounds")
 }
 
@@ -451,7 +484,7 @@ read_confounds <- function(x, ...) {
 #'   }
 #'   
 #'   # Clean up
-#'   unlink(ds001_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #'   unlink(ds007_path, recursive=TRUE)
 #' }, error = function(e) {
 #'   message("Example requires internet connection: ", e$message)
@@ -502,7 +535,7 @@ func_scans <- function(x, ...) {
 #'   }
 #'   
 #'   # Clean up
-#'   unlink(ds001_deriv_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires derivatives dataset: ", e$message)
 #' })
@@ -533,7 +566,7 @@ preproc_scans <- function(x, subid = ".*", task = ".*", run = ".*", session = ".
 #'   sub01_mask <- create_preproc_mask(proj, subid="01")
 #'   
 #'   # Clean up
-#'   unlink(ds001_deriv_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires derivatives dataset: ", e$message)
 #' })
@@ -565,7 +598,7 @@ create_preproc_mask <- function(x, subid, thresh=0.99, ...) {
 #'   multi_mask <- brain_mask(proj, subid=".*")
 #'   
 #'   # Clean up
-#'   unlink(ds001_deriv_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires derivatives dataset: ", e$message)
 #' })
@@ -579,6 +612,11 @@ brain_mask <- function(x, subid, ...) {
 #' This function searches for files in a BIDS project that match a specified pattern and
 #' optional key-value criteria. It can be used to find files in both raw data and preprocessed
 #' derivatives based on filename patterns and BIDS metadata.
+#'
+#' `search_files()` remains available as the compatibility interface for
+#' existing code and ad hoc regex-heavy searches. For new code, prefer
+#' [query_files()], which provides explicit matching mode, entity-existence
+#' semantics, and scope controls without changing `search_files()` behavior.
 #' 
 #' @param x A \code{bids_project} object created by \code{bids_project()}.
 #' @param regex A regular expression to match against filenames. Default is ".*" (all files).
@@ -610,13 +648,161 @@ brain_mask <- function(x, subid, ...) {
 #'                                  task="balloonanalogrisktask")
 #'   
 #'   # Clean up
-#'   unlink(ds001_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires internet connection: ", e$message)
 #' })
 #' }
 search_files <- function(x, ...) {
   UseMethod("search_files", x)
+}
+
+#' Query files in BIDS structure with explicit semantics
+#'
+#' This function provides a stricter, more explicit querying interface than
+#' [search_files()], with support for exact-vs-regex entity matching, optional
+#' entity-existence requirements, and raw/derivatives scope selection.
+#'
+#' @param x A `bids_project` or `mock_bids_project` object.
+#' @param regex A regular expression applied to filenames. Default is `".*"`.
+#' @param full_path If `TRUE`, return full paths. If `FALSE`, return paths
+#'   relative to the dataset root.
+#' @param match_mode Matching mode for entity filters in `...`:
+#'   - `"regex"`: values are treated as regex patterns (default)
+#'   - `"exact"`: values are treated as exact string matches
+#'   - `"glob"`: values are shell-style globs (e.g., `"sub-0*"`)
+#' @param require_entity If `TRUE`, queried entity keys must be present on a
+#'   file for it to match. If `FALSE`, wildcard patterns can match files where
+#'   that entity is missing.
+#' @param scope Which dataset scope to query:
+#'   - `"all"`: raw + derivatives
+#'   - `"raw"`: raw data only
+#'   - `"derivatives"`: derivatives only
+#' @param pipeline Optional derivative pipeline name(s) used when
+#'   `scope = "derivatives"` or `scope = "all"`.
+#' @param return Whether to return matching file paths (`"paths"`) or a tibble
+#'   with parsed entities (`"tibble"`).
+#' @param use_index Whether to use a persisted file index when available:
+#'   - `"auto"`: use a cached index if present
+#'   - `"never"`: always query the in-memory tree
+#' @param strict Passed through to search methods. If `TRUE`, missing queried
+#'   entities typically fail matching (except wildcard behavior in legacy paths).
+#' @param refresh If `FALSE` (default), reuse the index built when the project
+#'   was created without re-scanning the filesystem, which makes repeated
+#'   queries fast (comparable to an indexed lookup). Set `TRUE` to re-scan the
+#'   manifest paths and re-stat files, picking up additions, content changes,
+#'   and removals without rebuilding the project object.
+#' @param ... Additional entity filters (e.g., `subid = "01"`, `task = "rest"`,
+#'   `extension = ".nii.gz"`, `datatype = "func"`).  The special filters
+#'   `extension` and `datatype` are handled post-hoc and support the same
+#'   matching modes as other entities.
+#' @return A character vector of matching files, a tibble of indexed rows
+#'   (sorted by subid, session, task, run, path), or `NULL` if no matches
+#'   are found.
+#' @export
+#' @rdname query_files
+#' @examples
+#' \donttest{
+#' tryCatch({
+#'   ds001_path <- get_example_bids_dataset("ds001")
+#'   proj <- bids_project(ds001_path, fmriprep = FALSE)
+#'
+#'   # Exact entity matching for reproducible filters in new workflows
+#'   exact_bold <- query_files(
+#'     proj,
+#'     regex = "bold\\.nii\\.gz$",
+#'     subid = "01",
+#'     task = "balloonanalogrisktask",
+#'     match_mode = "exact"
+#'   )
+#'
+#'   # Regex entity matching when selecting multiple runs or tasks
+#'   regex_bold <- query_files(
+#'     proj,
+#'     regex = "bold\\.nii\\.gz$",
+#'     subid = "0[12]",
+#'     task = "balloon.*|mixedgamblestask",
+#'     match_mode = "regex"
+#'   )
+#'
+#'   # Require task labels to actually exist on the matched files
+#'   task_annotated <- query_files(
+#'     proj,
+#'     regex = "\\.nii\\.gz$",
+#'     task = ".*",
+#'     require_entity = TRUE,
+#'     scope = "raw"
+#'   )
+#'
+#'   # Example datasets are cached; leave the cache in place.
+#' }, error = function(e) {
+#'   message("Example requires internet connection: ", e$message)
+#' })
+#' }
+#' \donttest{
+#' tryCatch({
+#'   deriv_path <- get_example_bids_dataset("ds000001-fmriprep")
+#'   proj_deriv <- bids_project(deriv_path, fmriprep = TRUE)
+#'
+#'   deriv_only <- query_files(
+#'     proj_deriv,
+#'     regex = "bold\\.nii\\.gz$",
+#'     desc = "preproc",
+#'     scope = "derivatives",
+#'     pipeline = "fmriprep",
+#'     match_mode = "exact"
+#'   )
+#'
+#'   all_scopes <- query_files(
+#'     proj_deriv,
+#'     regex = "bold\\.nii\\.gz$",
+#'     scope = "all",
+#'     return = "tibble"
+#'   )
+#'
+#'   # Example datasets are cached; leave the cache in place.
+#' }, error = function(e) {
+#'   message("Example requires derivatives dataset: ", e$message)
+#' })
+#' }
+query_files <- function(x, ...) {
+  UseMethod("query_files", x)
+}
+
+#' Resolve metadata for a BIDS file
+#'
+#' Retrieves JSON metadata for a target BIDS file. When `inherit = TRUE`, this
+#' method applies BIDS-style inheritance by merging matching sidecars from less
+#' specific to more specific locations.
+#'
+#' If multiple sidecars are equally specific at the same directory depth, they
+#' are merged in deterministic path order after less specific ancestors, so the
+#' final values are reproducible.
+#'
+#' @param x A `bids_project` object.
+#' @param file Target file path (relative to project root or absolute path).
+#' @param inherit If `TRUE`, merge inherited metadata from parent sidecars.
+#' @param scope Scope used when applying inheritance:
+#'   - `"auto"`: infer from file location
+#'   - `"raw"`: raw data inheritance
+#'   - `"derivatives"`: derivatives inheritance
+#'   - `"all"`: allow full project ancestry
+#' @param ... Additional arguments for methods.
+#' @return A named list of metadata fields.
+#' @export
+#' @rdname get_metadata
+#' @examples
+#' \donttest{
+#' tryCatch({
+#'   ds001_path <- get_example_bids_dataset("ds001")
+#'   proj <- bids_project(ds001_path)
+#'   f <- func_scans(proj, subid = "01")[1]
+#'   if (!is.null(f)) get_metadata(proj, f)
+#'   # Example datasets are cached; leave the cache in place.
+#' }, error = function(e) message("Example requires internet: ", e$message))
+#' }
+get_metadata <- function(x, file, inherit = TRUE, scope = c("auto", "raw", "derivatives", "all"), ...) {
+  UseMethod("get_metadata", x)
 }
 
 #' Load All Event Files
@@ -651,7 +837,7 @@ search_files <- function(x, ...) {
 #'   }
 #'   
 #'   # Clean up
-#'   unlink(ds001_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires internet connection: ", e$message)
 #' })
@@ -673,7 +859,7 @@ load_all_events <- function(x, ...) {
 #'   summary <- bids_summary(proj)
 #'   
 #'   # Clean up
-#'   unlink(ds001_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires internet connection: ", e$message)
 #' })
@@ -685,7 +871,10 @@ bids_summary <- function(x) {
 #' Basic BIDS Compliance Checks
 #'
 #' @param x A bids_project object
-#' @return A list with compliance check results
+#' @param schema_check Logical. Whether to run schema validation (default \code{TRUE}).
+#' @param schema_version Character. BIDS schema version to use (default \code{"1.10.1"}).
+#' @return A list with compliance check results including \code{passed}, \code{issues},
+#'   \code{warnings}, \code{participants_source}, and \code{schema_checked}.
 #' @export
 #' @examples
 #' \donttest{
@@ -693,14 +882,14 @@ bids_summary <- function(x) {
 #'   ds001_path <- get_example_bids_dataset("ds001")
 #'   proj <- bids_project(ds001_path)
 #'   compliance <- bids_check_compliance(proj)
-#'   
+#'
 #'   # Clean up
-#'   unlink(ds001_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires internet connection: ", e$message)
 #' })
 #' }
-bids_check_compliance <- function(x) {
+bids_check_compliance <- function(x, schema_check = TRUE, schema_version = "1.10.1") {
   UseMethod("bids_check_compliance")
 }
 
@@ -725,7 +914,7 @@ bids_check_compliance <- function(x) {
 #'   subj$scans()
 #'   
 #'   # Clean up
-#'   unlink(ds001_path, recursive=TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires internet connection: ", e$message)
 #' })
@@ -747,6 +936,215 @@ anomalies <- function(x, ...) {
 #' @noRd
 get_data_matrix <- function(x, ...) {
   UseMethod("get_data_matrix")
+}
+
+# ---------------------------------------------------------------------------
+# Milestone 0.6: typed metadata generics
+# ---------------------------------------------------------------------------
+
+#' Read the dataset_description.json for a BIDS project
+#'
+#' @param x A `bids_project` object or a character path.
+#' @param ... Additional arguments passed to methods.
+#' @return A `bids_dataset_description` object, or NULL if the file is absent.
+#' @export
+#' @rdname read_dataset_description
+#' @examples
+#' \donttest{
+#' tryCatch({
+#'   ds001_path <- get_example_bids_dataset("ds001")
+#'   desc <- read_dataset_description(ds001_path)
+#'   print(desc)
+#'   # Example datasets are cached; leave the cache in place.
+#' }, error = function(e) message("Example requires internet: ", e$message))
+#' }
+read_dataset_description <- function(x, ...) {
+  UseMethod("read_dataset_description")
+}
+
+#' Get fields from a BIDS dataset description
+#'
+#' @param x A `bids_dataset_description` object.
+#' @param ... Additional arguments passed to methods.
+#' @return A character scalar.
+#' @export
+dataset_name <- function(x, ...) UseMethod("dataset_name")
+#' @rdname dataset_name
+#' @export
+dataset_type <- function(x, ...) UseMethod("dataset_type")
+#' @keywords internal
+#' @noRd
+generated_by <- function(x, ...) UseMethod("generated_by")
+#' @keywords internal
+#' @noRd
+dataset_links <- function(x, ...) UseMethod("dataset_links")
+#' @keywords internal
+#' @noRd
+hed_version <- function(x, ...) UseMethod("hed_version")
+#' @keywords internal
+#' @noRd
+license <- function(x, ...) UseMethod("license")
+
+#' Get the BIDS version of a dataset
+#'
+#' @param x A `bids_dataset_description` or `bids_project` object.
+#' @param ... Additional arguments passed to methods.
+#' @return A character scalar BIDS version string, or `NA_character_`.
+#' @export
+#' @rdname bids_version
+#' @examples
+#' \donttest{
+#' tryCatch({
+#'   ds001_path <- get_example_bids_dataset("ds001")
+#'   desc <- read_dataset_description(ds001_path)
+#'   bids_version(desc)
+#'   # Example datasets are cached; leave the cache in place.
+#' }, error = function(e) message("Example requires internet: ", e$message))
+#' }
+bids_version <- function(x, ...) {
+  UseMethod("bids_version")
+}
+
+#' Get the dataset_description object from a BIDS project
+#'
+#' @param x A `bids_project` object.
+#' @param ... Additional arguments passed to methods.
+#' @return A `bids_dataset_description` object, or NULL.
+#' @export
+#' @rdname dataset_description
+#' @examples
+#' \donttest{
+#' tryCatch({
+#'   ds001_path <- get_example_bids_dataset("ds001")
+#'   proj <- bids_project(ds001_path)
+#'   desc <- dataset_description(proj)
+#'   print(desc)
+#'   # Example datasets are cached; leave the cache in place.
+#' }, error = function(e) message("Example requires internet: ", e$message))
+#' }
+dataset_description <- function(x, ...) {
+  UseMethod("dataset_description")
+}
+
+#' Read participants.tsv as a typed tabular object
+#'
+#' @param x A `bids_project` object or a character path.
+#' @param ... Additional arguments passed to methods.
+#' @return A `bids_participants` object inheriting from `tbl_df`, or NULL.
+#' @export
+#' @rdname read_participants
+#' @examples
+#' \donttest{
+#' tryCatch({
+#'   ds001_path <- get_example_bids_dataset("ds001")
+#'   pt <- read_participants(ds001_path)
+#'   print(pt)
+#'   # Example datasets are cached; leave the cache in place.
+#' }, error = function(e) message("Example requires internet: ", e$message))
+#' }
+read_participants <- function(x, ...) {
+  UseMethod("read_participants")
+}
+
+#' Read a scans.tsv file for a subject
+#'
+#' @param x A `bids_project` object.
+#' @param subid Subject ID (without `sub-` prefix).
+#' @param session Optional session ID (without `ses-` prefix).
+#' @param ... Additional arguments passed to methods.
+#' @return A `bids_scans_tsv` object inheriting from `tbl_df`, or NULL.
+#' @export
+#' @rdname read_scans_tsv
+#' @examples
+#' \donttest{
+#' tryCatch({
+#'   ds001_path <- get_example_bids_dataset("ds001")
+#'   proj <- bids_project(ds001_path)
+#'   scans <- read_scans_tsv(proj, subid = "01")
+#'   # Example datasets are cached; leave the cache in place.
+#' }, error = function(e) message("Example requires internet: ", e$message))
+#' }
+read_scans_tsv <- function(x, subid, session = NULL, ...) {
+  UseMethod("read_scans_tsv")
+}
+
+#' Read a sessions.tsv file for a subject
+#'
+#' @param x A `bids_project` object.
+#' @param subid Subject ID (without `sub-` prefix).
+#' @param ... Additional arguments passed to methods.
+#' @return A `bids_sessions_tsv` object inheriting from `tbl_df`, or NULL.
+#' @export
+#' @rdname read_sessions_tsv
+#' @examples
+#' \donttest{
+#' tryCatch({
+#'   ds007_path <- get_example_bids_dataset("ds007")
+#'   proj <- bids_project(ds007_path)
+#'   sess <- read_sessions_tsv(proj, subid = "01")
+#'   unlink(ds007_path, recursive = TRUE)
+#' }, error = function(e) message("Example requires internet: ", e$message))
+#' }
+read_sessions_tsv <- function(x, subid, ...) {
+  UseMethod("read_sessions_tsv")
+}
+
+#' Get the sidecar metadata attached to a tabular BIDS object
+#'
+#' @param x A `bids_tabular` object.
+#' @param ... Additional arguments passed to methods.
+#' @return A named list of sidecar metadata, or an empty list if none.
+#' @export
+#' @rdname sidecar
+#' @examples
+#' \donttest{
+#' tryCatch({
+#'   ds001_path <- get_example_bids_dataset("ds001")
+#'   pt <- read_participants(ds001_path)
+#'   sc <- sidecar(pt)
+#'   # Example datasets are cached; leave the cache in place.
+#' }, error = function(e) message("Example requires internet: ", e$message))
+#' }
+sidecar <- function(x, ...) {
+  UseMethod("sidecar")
+}
+
+#' Coerce to a BIDS URI object
+#'
+#' @param x A character scalar BIDS URI string, or a `bids_uri` object.
+#' @param ... Additional arguments passed to methods.
+#' @return A `bids_uri` object.
+#' @export
+#' @rdname as_bids_uri
+#' @examples
+#' u <- as_bids_uri("bids::sub-01/anat/sub-01_T1w.nii.gz")
+#' u$dataset_name   # ""
+#' u$relative_path  # "sub-01/anat/sub-01_T1w.nii.gz"
+as_bids_uri <- function(x, ...) {
+  UseMethod("as_bids_uri")
+}
+
+#' Resolve a BIDS URI to a local or remote path
+#'
+#' @param uri A `bids_uri` object or a character scalar BIDS URI string.
+#' @param description A `bids_dataset_description` or `bids_project` object.
+#' @param ... Additional arguments passed to methods.
+#' @param must_exist Logical. If `TRUE`, the resolved path must exist on disk.
+#' @return A character scalar path (or URL for remote links).
+#' @export
+#' @rdname resolve_bids_uri
+#' @examples
+#' \donttest{
+#' tryCatch({
+#'   ds001_path <- get_example_bids_dataset("ds001")
+#'   desc <- read_dataset_description(ds001_path)
+#'   uri <- bids_uri("bids::sub-01/anat/sub-01_T1w.nii.gz")
+#'   path <- resolve_bids_uri(uri, desc)
+#'   # Example datasets are cached; leave the cache in place.
+#' }, error = function(e) message("Example requires internet: ", e$message))
+#' }
+resolve_bids_uri <- function(uri, description, ..., must_exist = FALSE) {
+  UseMethod("resolve_bids_uri", uri)
 }
 
 
@@ -795,7 +1193,7 @@ get_data_matrix <- function(x, ...) {
 #'   sub01_xfms <- transform_files(proj, subid = "01")
 #'
 #'   # Clean up
-#'   unlink(ds_path, recursive = TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires internet connection: ", e$message)
 #' })
@@ -852,7 +1250,7 @@ transform_files <- function(x, subid = ".*", session = ".*", from = ".*",
 #'   fsnative_surfs <- surface_files(proj, space = "fsnative")
 #'
 #'   # Clean up
-#'   unlink(ds_path, recursive = TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires internet connection: ", e$message)
 #' })
@@ -902,7 +1300,7 @@ surface_files <- function(x, subid = ".*", session = ".*", hemi = ".*",
 #'   sub01_masks <- mask_files(proj, subid = "01")
 #'
 #'   # Clean up
-#'   unlink(ds_path, recursive = TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires internet connection: ", e$message)
 #' })
@@ -962,7 +1360,7 @@ mask_files <- function(x, subid = ".*", session = ".*", space = ".*",
 #'   head(flat)
 #'
 #'   # Clean up
-#'   unlink(ds_path, recursive = TRUE)
+#'   # Example datasets are cached; leave the cache in place.
 #' }, error = function(e) {
 #'   message("Example requires internet connection: ", e$message)
 #' })

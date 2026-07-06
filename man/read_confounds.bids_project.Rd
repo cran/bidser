@@ -10,10 +10,12 @@
   task = ".*",
   session = ".*",
   run = ".*",
-  cvars = DEFAULT_CVARS,
+  cvars = confound_set("legacy_default"),
   npcs = -1,
   perc_var = -1,
   nest = TRUE,
+  clean = "zero_variance",
+  na_action = "leave",
   ...
 )
 }
@@ -29,12 +31,16 @@
 \item{run}{Run regex. If the run identifier cannot be extracted from
 the filename, the run value defaults to "1".}
 
-\item{cvars}{The names of the confound variables to select. Defaults to \code{DEFAULT_CVARS}.
-Canonical names such as \code{"csf"} are automatically mapped to any
-matching column names found in the dataset using \code{CVARS_ALIASES}.
-You can also pass convenience sets from \code{confound_set()}, e.g.,
-\code{confound_set("motion24")}, or wildcard patterns like
-\code{"cosine_*"}, \code{"motion_outlier_*"}, or \code{"a_comp_cor_*[6]"}.}
+\item{cvars}{The confound variables to select. Defaults to
+\code{confound_set("legacy_default")}, the historical 26-name default
+(motion6 + CSF/WM + global signal + DVARS family + framewise displacement +
+first six anatomical and temporal CompCor components). Canonical names such
+as \code{"csf"} are automatically mapped to any matching column names found
+in the dataset using the internal alias table. You can also pass convenience
+sets from \code{\link{confound_set}()}, e.g., \code{confound_set("motion24")},
+a denoising strategy from \code{\link{confound_strategy}()}, or wildcard
+patterns like \code{"cosine_*"}, \code{"motion_outlier_*"}, or
+\code{"a_comp_cor_*[6]"}.}
 
 \item{npcs}{Perform PCA reduction on confounds and return \code{npcs} PCs.}
 
@@ -42,16 +48,39 @@ You can also pass convenience sets from \code{confound_set()}, e.g.,
 
 \item{nest}{If TRUE, nests confound tables by subject/task/session/run.}
 
+\item{clean}{Character vector controlling run-level confound cleaning before
+returning data or running PCA. Supported values are \code{"none"},
+\code{"zero_variance"}, and \code{"rank"}. The default drops zero-variance columns
+and records diagnostics in the \code{confound_diagnostics} attribute.}
+
+\item{na_action}{How to handle missing values in raw confound columns before
+returning them. Supported values are \code{"leave"} (default, preserve missing
+values), \code{"zero"} (replace missing numeric confounds with 0), and
+\code{"median"} (replace missing numeric confounds with the column median).
+PCA-reduced confounds already use median imputation internally.}
+
 \item{...}{Additional arguments (not currently used)}
 }
 \value{
 A \code{bids_confounds} tibble (nested if nest=TRUE) with identifier columns
 for participant_id, task, session, and run. When PCA is requested, the
 object includes a \code{pca} attribute with per-run loadings and variance used
-by \code{plot()}.
+by \code{plot()}. Dropped or flagged confounds are stored in the
+\code{confound_diagnostics} attribute.
 }
 \description{
 Reads in fmriprep confound tables for one or more subjects.
+}
+\details{
+For new analyses, the recommended modern default is the built-in
+denoising strategy \code{confound_strategy("pcabasic80")}
+(PCA of motion24 + aCompCor + tCompCor + CSF + WM retaining 80\\% variance,
+with raw cosine regressors appended). Note this is \emph{not} equivalent to
+the \code{cvars} default \code{confound_set("legacy_default")}: the strategy
+uses motion24 (not motion6) and \emph{all} CompCor components (not the first
+six), and omits the global signal, DVARS, and framewise-displacement
+regressors. Use \code{\link{list_confound_sets}()} and
+\code{\link{list_confound_strategies}()} to discover the available options.
 }
 \examples{
 \donttest{
@@ -74,9 +103,14 @@ tryCatch({
   conf_flat <- read_confounds(proj, nest=FALSE)
   
   # Clean up
-  unlink(ds_path, recursive=TRUE)
+  # Example datasets are cached; leave the cache in place.
 }, error = function(e) {
   message("Example requires derivatives dataset with confounds: ", e$message)
 })
 }
+}
+\seealso{
+\code{\link{confound_set}}, \code{\link{confound_strategy}},
+\code{\link{list_confound_sets}}, \code{\link{list_confound_strategies}},
+\code{\link{confound_files}}
 }

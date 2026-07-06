@@ -12,6 +12,8 @@ read_sidecar(
   session = ".*",
   modality = "bold",
   full_path = TRUE,
+  inherit = FALSE,
+  inherit_scope = c("auto", "raw", "derivatives", "all"),
   ...
 )
 }
@@ -31,17 +33,34 @@ This is matched against the 'kind' field in parsed BIDS filenames.}
 
 \item{full_path}{If TRUE, return full file paths in the \code{file} column. Default is TRUE.}
 
+\item{inherit}{Controls what the function anchors on:
+\itemize{
+\item \code{FALSE} (default): read each matching JSON sidecar \emph{file} directly. One
+row per JSON file; \code{file} is the JSON path.
+\item \code{TRUE}: resolve \emph{effective} metadata per matching imaging \emph{scan} using
+BIDS inheritance (\code{\link[=get_metadata]{get_metadata()}}). One row per matching data file;
+\code{file} is the scan path. This surfaces task- and dataset-level sidecars
+that apply to a scan even when it has no file-level JSON of its own.
+}}
+
+\item{inherit_scope}{Scope used when \code{inherit = TRUE}:
+\itemize{
+\item \code{"auto"} (default) infers raw/derivatives from file location
+\item \code{"raw"}, \code{"derivatives"}, or \code{"all"} override scope explicitly
+}}
+
 \item{...}{Additional arguments passed to \code{search_files()}.}
 }
 \value{
-A tibble with one row per JSON file. Columns include:
+A tibble with one row per matched file (a JSON sidecar when
+\code{inherit = FALSE}, an imaging scan when \code{inherit = TRUE}). Columns include:
 \itemize{
-\item \code{file}: the JSON file path
+\item \code{file}: the sidecar (or scan) file path
 \item \code{.subid}: subject ID extracted from filename
 \item \code{.session}: session ID extracted from filename (if present)
 \item \code{.task}: task name extracted from filename (if present)
 \item \code{.run}: run number extracted from filename (if present)
-\item Additional columns for each top-level key in the JSON files
+\item Additional columns for each resolved top-level metadata key
 If no files are found, returns an empty tibble.
 }
 }
@@ -70,7 +89,7 @@ tryCatch({
                            full_path=FALSE)
   
   # Clean up
-  unlink(ds001_path, recursive=TRUE)
+  # Example datasets are cached; leave the cache in place.
 }, error = function(e) {
   message("Example requires internet connection: ", e$message)
 })
