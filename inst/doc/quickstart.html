@@ -1711,9 +1711,9 @@ workflows:</p>
 <p>When you need absolute paths for analysis tools:</p>
 <div class="sourceCode" id="cb20"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" tabindex="-1"></a>full_paths <span class="ot">&lt;-</span> <span class="fu">func_scans</span>(proj, <span class="at">subid =</span> <span class="st">&quot;01&quot;</span>, <span class="at">full_path =</span> <span class="cn">TRUE</span>)</span>
 <span id="cb20-2"><a href="#cb20-2" tabindex="-1"></a>full_paths</span>
-<span id="cb20-3"><a href="#cb20-3" tabindex="-1"></a><span class="co">#&gt; [1] &quot;/private/var/folders/9h/nkjq6vss7mqdl4ck7q1hd8ph0000gp/T/Rtmpk1Xtjy/bids_example_ds001/sub-01/func/sub-01_task-balloonanalogrisktask_run-01_bold.nii.gz&quot;</span></span>
-<span id="cb20-4"><a href="#cb20-4" tabindex="-1"></a><span class="co">#&gt; [2] &quot;/private/var/folders/9h/nkjq6vss7mqdl4ck7q1hd8ph0000gp/T/Rtmpk1Xtjy/bids_example_ds001/sub-01/func/sub-01_task-balloonanalogrisktask_run-02_bold.nii.gz&quot;</span></span>
-<span id="cb20-5"><a href="#cb20-5" tabindex="-1"></a><span class="co">#&gt; [3] &quot;/private/var/folders/9h/nkjq6vss7mqdl4ck7q1hd8ph0000gp/T/Rtmpk1Xtjy/bids_example_ds001/sub-01/func/sub-01_task-balloonanalogrisktask_run-03_bold.nii.gz&quot;</span></span>
+<span id="cb20-3"><a href="#cb20-3" tabindex="-1"></a><span class="co">#&gt; [1] &quot;/private/var/folders/9h/nkjq6vss7mqdl4ck7q1hd8ph0000gp/T/RtmpKGsBrT/bids_example_ds001/sub-01/func/sub-01_task-balloonanalogrisktask_run-01_bold.nii.gz&quot;</span></span>
+<span id="cb20-4"><a href="#cb20-4" tabindex="-1"></a><span class="co">#&gt; [2] &quot;/private/var/folders/9h/nkjq6vss7mqdl4ck7q1hd8ph0000gp/T/RtmpKGsBrT/bids_example_ds001/sub-01/func/sub-01_task-balloonanalogrisktask_run-02_bold.nii.gz&quot;</span></span>
+<span id="cb20-5"><a href="#cb20-5" tabindex="-1"></a><span class="co">#&gt; [3] &quot;/private/var/folders/9h/nkjq6vss7mqdl4ck7q1hd8ph0000gp/T/RtmpKGsBrT/bids_example_ds001/sub-01/func/sub-01_task-balloonanalogrisktask_run-03_bold.nii.gz&quot;</span></span>
 <span id="cb20-6"><a href="#cb20-6" tabindex="-1"></a></span>
 <span id="cb20-7"><a href="#cb20-7" tabindex="-1"></a><span class="fu">all</span>(<span class="fu">file.exists</span>(full_paths))</span>
 <span id="cb20-8"><a href="#cb20-8" tabindex="-1"></a><span class="co">#&gt; [1] TRUE</span></span></code></pre></div>
